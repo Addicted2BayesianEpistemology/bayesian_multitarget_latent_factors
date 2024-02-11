@@ -25,15 +25,15 @@ from ipywidgets import interact, interactive, fixed, interact_manual
 
 
 
-from .HMC_helper import execute_HMC
+from .HMC_helper import execute_HMC as _execute_HMC
 from .HMC_helper import MAP_and_LaplaceSample
 
 import pkg_resources
 
 
-__all__ = ['sample_from_prior', 'assemble_Σ11_22', 'assemble_Σ12', 'assemble_Σ', 'renaming_convention',
-           'default_basis_dictionary_builder', 'compute_BLambaBetaX', 'sample_from_posterior', 'sample_from_posterior_predictive',
-           'dataset_generator', 'one_functional_target_dictionary_builder']
+__all__ = ['sample_from_prior', 'renaming_convention', 'default_basis_dictionary_builder', 'compute_BLambaBetaX', 'sample_from_posterior',
+            'sample_from_posterior_predictive', 'dataset_generator', 'one_functional_target_dictionary_builder',
+            'sample_conditional_predictive', 'sample_unconditional_predictive', 'get_relationship_between_targets','Varimax_RSP']
 
 
 def sample_from_prior(data_dic, X_test, rng_seed, n_samples):
@@ -1042,7 +1042,7 @@ def sample_from_posterior(data_dic,
 
     # Hamiltonian Monte Carlo
     idata = \
-    execute_HMC(
+    _execute_HMC(
         data_dic,
         rng.integers(1000000),
         stan_file=stan_file,
@@ -1938,9 +1938,67 @@ def sample_unconditional_predictive(idata, X_test, rng_seed, group = "posterior"
 
 def get_relationship_between_targets(idata, group = "posterior", pointwise = False, bootstrap = None, known_target = 1, rng_seed = 999):
     """
-    notice that rng_seed has some use ONLY in the case of bootstrap different from None
-    """
+    The function computes the regression coefficients (β) that best describe the relationship between a known 
+    target variable and an unknown target variable, based on the covariance matrices provided in the InferenceData 
+    object. The method can operate on either the posterior or prior distributions and allows for pointwise 
+    regression coefficient calculation.
 
+    Parameters
+    ----------
+    idata : arviz.InferenceData
+        An InferenceData object containing the posterior or prior groups with covariance matrices.
+    
+    group : str, optional
+        The group within the InferenceData to use ('posterior' or 'prior'). Default is 'posterior'.
+    
+    pointwise : bool, optional
+        If True, calculates pointwise regression coefficients. If False, calculates the complete
+        regression coefficients matrix. Default is False.
+    
+    bootstrap : int, optional
+        The number of bootstrap samples to use for resampling. If None, no bootstrap resampling is performed.
+        Default is None.
+    
+    known_target : int, optional
+        The index of the known target variable (1 or 2). Default is 1.
+    
+    rng_seed : int, optional
+        The seed for the random number generator used in bootstrap resampling. Default is 999. Note that rng_seed 
+        is used only if bootstrap is not None.
+
+    Raises
+    ------
+    TypeError
+        If any of the inputs are not of the expected type.
+    
+    ValueError
+        If 'group' is not one of 'posterior' or 'prior', or if 'known_target' is not 1 or 2.
+
+    Returns
+    -------
+    xarray.DataArray or xarray.Dataset
+        The calculated regression coefficients (β) as an xarray object. If bootstrap is None and group is 
+        'posterior', returns an xarray.Dataset; otherwise, returns an xarray.DataArray.
+
+    Notes
+    -----
+    The regression coefficients are calculated using the covariance matrices between the known and unknown 
+    target variables. If 'pointwise' is False, the inverse of the covariance matrix of the known target is used 
+    in the computation, otherwise its diagonal is used (This describes the regression from a known `point` of the 
+    "known" to the unknown target).
+
+    References
+    ----------
+    For theoretical background and algorithmic details, refer to relevant literature on Bayesian inference 
+    and regression analysis in factor models.
+
+    See Also
+    --------
+    arviz.InferenceData : Class for storing sampled data for Bayesian inference.
+    xarray.DataArray : Data structure for multi-dimensional arrays.
+    xarray.Dataset : Data structure for multi-dimensional datasets.
+
+    """
     from copy import deepcopy
     
     if not isinstance(rng_seed, (int, _np.int_)):
@@ -2009,31 +2067,243 @@ def get_relationship_between_targets(idata, group = "posterior", pointwise = Fal
 
 
 
-    def Varimax_RSP(Lambda):
-        """
 
-        """
+def _Varimax_RSP(Lambda):
+    '''
+    Lambda should be a numpy array in which the first dimension is the MCMC draw, the second is the basis function and the third is the latent factor
+    '''
+    import scipy.optimize as spopt
 
-        def _ortho_rotation(components, method="varimax", tol=1e-6, max_iter=100):
-            """Return rotated components."""
-            nrow, ncol = components.shape
-            rotation_matrix = np.eye(ncol)
-            var = 0
-        
-            for _ in range(max_iter):
-                comp_rot = np.dot(components, rotation_matrix)
-                if method == "varimax":
-                    tmp = comp_rot * np.transpose((comp_rot**2).sum(axis=0) / nrow)
-                elif method == "quartimax":
-                    tmp = 0
-                u, s, v = np.linalg.svd(np.dot(components.T, comp_rot**3 - tmp))
-                rotation_matrix = np.dot(u, v)
-                var_new = np.sum(s)
-                if var != 0 and var_new < var * (1 + tol):
-                    break
-                var = var_new
-        
-            return np.dot(components, rotation_matrix), rotation_matrix
+    def _ortho_rotation(components, method="varimax", tol=1e-6, max_iter=100):
+        """Return rotated components."""
+        nrow, ncol = components.shape
+        rotation_matrix = _np.eye(ncol)
+        var = 0
+    
+        for _ in range(max_iter):
+            comp_rot = _np.dot(components, rotation_matrix)
+            if method == "varimax":
+                tmp = comp_rot * _np.transpose((comp_rot**2).sum(axis=0) / nrow)
+            elif method == "quartimax":
+                tmp = 0
+            u, s, v = _np.linalg.svd(_np.dot(components.T, comp_rot**3 - tmp))
+            rotation_matrix = _np.dot(u, v)
+            var_new = _np.sum(s)
+            if var != 0 and var_new < var * (1 + tol):
+                break
+            var = var_new
+    
+        return _np.dot(components, rotation_matrix), rotation_matrix
+    
+    T = Lambda.shape[0]
+    p = Lambda.shape[1]
+    q = Lambda.shape[2]
+    Λ = _np.zeros( Lambda.shape )
+    Phi = _np.zeros( (T,q,q) )
+    for t in range(T):
+        Λ[t, :, :], Phi[t,:,:] = _ortho_rotation(Lambda[t, :, :])
+        if t % 500 == 0:
+            print('Rotated sample ' + str(t))        
+
+    S = _np.ones((T, q))
+    ν = _np.repeat(
+        _np.arange(q)[_np.newaxis, :],
+        T,
+        axis=0
+    )
+    
+    all_s = _np.array( list(product([-1,1], repeat=q)) )
+
+    objective_fun = +_np.inf
+
+    iteration_number = 0
+    while True:
+        print('Starting iteration number ' + str(iteration_number))
+        iteration_number += 1
+        objective_fun_new = 0
+        Λstar = _np.zeros((p,q))
+        for t in range(T):
+            Λaux = (Λ[t,:,:] @ _np.diag(S[t,:]))
+            for i in range(q):
+                Λstar[:,i] += Λaux[:,ν[t,i]]/T
+        for t in range(T):
+            ν_new = _np.zeros( all_s.shape )
+            cost = _np.zeros( all_s.shape[0] )
+            for s_idx in range(all_s.shape[0]):
+                s = all_s[s_idx,:]
+                Λaux = \
+                _np.matmul(
+                    Λ[t,:,:],
+                    _np.diag(s)
+                )
+                C = _np.zeros((q,q))
+                for j in range(q):
+                    C[:,j] = _np.square( Λstar[:,:] - Λaux[:,[j]] ).sum(axis=0)
+                row_idx, col_idx = spopt.linear_sum_assignment(C)
+                cost[s_idx] = C[row_idx, col_idx].sum()
+                ν_new[s_idx, row_idx] = col_idx
+            s_idx_best = _np.argmin(cost)
+            ν[t,:] = ν_new[s_idx_best, :]
+            S[t,:] = all_s[s_idx_best, :]
+            objective_fun_new += min(cost)
+        if _np.isclose(objective_fun_new, objective_fun, rtol=1e-4):
+            break
+        if iteration_number >= 50:
+            break
+        print('\t Previous objective fun =\t' + "{:.{}f}".format(objective_fun, 3) + '\n\t New objective fun =\t\t' + "{:.{}f}".format(objective_fun_new, 3))
+        objective_fun = objective_fun_new
+
+    for t in range(T):
+        Λ[t,:,:] = Λ[t,:,:] @ _np.diag(S[t,:])
+        Λ[t,:,:] = Λ[t,:,ν[t,:]].T
+    
+    return Phi, Λ, ν, S
 
 
-        pass
+def Varimax_RSP(idata):
+    """
+    Performs Varimax rotation on the posterior samples of the latent factors.
+    It combines the latent factors for two targets into a single array, applies the Varimax rotation,
+    then looks for the best signed permutation to align all samples about the same mode.
+    Returns a dataset containing the rotated latent factors, rotation matrix, sign adjustments, and permutation matrix.
+    The function also returns all the paramters that change after the Rotation + Signed Permutation.
+
+    Parameters
+    ----------
+    idata : az.InferenceData
+        The inference Data Object returned from the function `sample_from_posterior`.
+
+    Returns
+    -------
+    xr.Dataset
+        An xarray dataset containing the rotation matrix ('R'), sign adjustments ('S'), 
+        permutation matrix ('P'), rotated latent factors for target 1 and 2 ('Λ1', 'Λ2'), 
+        the matrix product of basis functions and rotated latent factors for both targets 
+        ('B1Λ1', 'B2Λ2'), and the rotated regression coefficients ('β').
+
+    Notes
+    -----
+    The Varimax rotation is applied to the latent factors to achieve a simpler structure with 
+    the goal of making the factors more interpretable. This involves rotating the factors such 
+    that the variance of the squared loadings is maximized. The rotation is applied to the 
+    combined latent factors for both targets and is followed by adjustments for signs and 
+    permutations to align with the original model structure.
+
+    References
+    ----------
+    Kaiser, H.F. (1958). The varimax criterion for analytic rotation in factor analysis. 
+    Psychometrika, 23(3), 187-200.
+
+    This code implements the algorithm described in:
+        Papastamoulis, Panagiotis, & Ntzoufras, Ioannis. (2022). On the identifiability of Bayesian factor analytic models. 
+        Statistics and Computing, 32(2), 23. https://doi.org/10.1007/s11222-022-10084-4
+
+    See Also
+    --------
+    _Varimax_RSP : The lower-level function that directly applies the Varimax rotation and additional 
+                   transformations to the numpy array of latent factors.
+
+    """
+
+    aux_xr = _xr.concat(
+        [
+            renaming_convention( idata.posterior['Lambda1'] ).rename({'basis_fun_branch_1_idx':'basis_fun_branch_idx'}),
+            renaming_convention( idata.posterior['Lambda2'] ).rename({'basis_fun_branch_2_idx':'basis_fun_branch_idx'}),
+        ],
+        'basis_fun_branch_idx'
+    ).stack(chain_draw_idx = ('chain','draw')).transpose('chain_draw_idx','basis_fun_branch_idx','latent_factor_idx')
+
+    Phi, Λ, ν, S = _Varimax_RSP(aux_xr.values)
+    
+    Phi_xr = \
+    _xr.DataArray(
+        Phi,
+        dims=['chain_draw_idx','latent_factor_idx','latent_factor_idx_bis'],
+        coords={
+            'chain_draw_idx': aux_xr.indexes['chain_draw_idx']
+        }
+    ).unstack().transpose('chain','draw','latent_factor_idx','latent_factor_idx_bis')
+
+    p1 = idata.constant_data['p1'].values[0]
+    p2 = idata.constant_data['p2'].values[0]
+
+    Λ1_xr = \
+    _xr.DataArray(
+        Λ[:,0:p1,:],
+        dims=['chain_draw_idx','basis_fun_branch_1_idx','latent_factor_idx'],
+        coords={
+            'chain_draw_idx': aux_xr.indexes['chain_draw_idx']
+        }
+    ).unstack().transpose('chain','draw','basis_fun_branch_1_idx','latent_factor_idx')
+
+    Λ2_xr = \
+    _xr.DataArray(
+        Λ[:,p1:(p1+p2),:],
+        dims=['chain_draw_idx','basis_fun_branch_2_idx','latent_factor_idx'],
+        coords={
+            'chain_draw_idx': aux_xr.indexes['chain_draw_idx']
+        }
+    ).unstack().transpose('chain','draw','basis_fun_branch_2_idx','latent_factor_idx')
+
+    P = _np.zeros((ν.shape[0],ν.shape[1],ν.shape[1]))
+    for t in range(ν.shape[0]):
+        P[t,_np.arange(ν.shape[1]),ν[t]] = 1
+
+    # warning! bis comes first because we are hiding a transposition here
+    P_xr = \
+    _xr.DataArray(
+        P,
+        dims=['chain_draw_idx','latent_factor_idx_bis','latent_factor_idx'],
+        coords={
+            'chain_draw_idx': aux_xr.indexes['chain_draw_idx']
+        }
+    ).unstack().transpose('chain','draw','latent_factor_idx','latent_factor_idx_bis')
+
+    S_xr = \
+    _xr.DataArray(
+        S,
+        dims=['chain_draw_idx','latent_factor_idx'],
+        coords={
+            'chain_draw_idx': aux_xr.indexes['chain_draw_idx']
+        }
+    ).unstack().transpose('chain','draw','latent_factor_idx')
+
+    B1Λ1_xr = \
+    _xrein.linalg.matmul(
+        renaming_convention( idata.constant_data['B1'] ),
+        Λ1_xr,
+        dims=[['target_1_dim_idx','basis_fun_branch_1_idx'],['basis_fun_branch_1_idx','latent_factor_idx']]
+    )    
+
+    B2Λ2_xr = \
+    _xrein.linalg.matmul(
+        renaming_convention( idata.constant_data['B2'] ),
+        Λ2_xr,
+        dims=[['target_2_dim_idx','basis_fun_branch_2_idx'],['basis_fun_branch_2_idx','latent_factor_idx']]
+    )    
+
+    Varimaxed_β_xr = \
+    _xrein.linalg.matmul(
+        P_xr,
+        _xrein.linalg.matmul(
+            Phi_xr,
+            renaming_convention( idata.posterior['beta'] ),
+            dims=[['latent_factor_idx_bis','latent_factor_idx'],['latent_factor_idx','covariate_idx']]
+        ).rename({'latent_factor_idx_bis':'latent_factor_idx'})*S_xr,
+        dims=[['latent_factor_idx_bis','latent_factor_idx'],['latent_factor_idx','covariate_idx']]
+    ).rename({'latent_factor_idx_bis':'latent_factor_idx'})    
+
+    return(
+        _xr.Dataset(
+            {
+                'R': Phi_xr.rename('Rotation Matrix'),
+                'S': S_xr.rename('Signed'),
+                'P': P_xr.rename('Permutation Matrix'),
+                'Λ1': Λ1_xr.rename('Λ target 1'),
+                'Λ2': Λ2_xr.rename('Λ target 2'),
+                'B1Λ1': B1Λ1_xr,
+                'B2Λ2': B2Λ2_xr,
+                'β': Varimaxed_β_xr,
+            }
+        )
+    )
