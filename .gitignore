@@ -1,1 +1,3 @@
 tmp/
+build/
+bayesian_multitarget_latent_factors.egg-info/
