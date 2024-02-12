@@ -1891,7 +1891,7 @@ def sample_unconditional_predictive(idata, X_test, rng_seed, group = "posterior"
                 [
                     _xr.concat(
                         [
-                            renaming_convention( xr_dataset['Sigma_11'] - _np.square( xr_dataset['psi1']*_xr.DataArray(0.99*_np.eye(xr_dataset['Sigma_11'].sizes['Sigma_11_dim_0']), dims=['Sigma_11_dim_0','Sigma_11_dim_1']) ).rename({'target_1_dim_idx_bis':'target_dim_idx2'}) ),
+                            renaming_convention( xr_dataset['Sigma_11'] - _np.square( xr_dataset['psi1']*_xr.DataArray(0.99*_np.eye(xr_dataset['Sigma_11'].sizes['Sigma_11_dim_0']), dims=['Sigma_11_dim_0','Sigma_11_dim_1']) ) ).rename({'target_1_dim_idx_bis':'target_dim_idx2'}),
                             renaming_convention( xr_dataset['Sigma_12'] ).rename({'target_2_dim_idx':'target_dim_idx2'})
                         ],
                         dim='target_dim_idx2'
@@ -1899,7 +1899,7 @@ def sample_unconditional_predictive(idata, X_test, rng_seed, group = "posterior"
                     _xr.concat(
                         [
                             renaming_convention( xr_dataset['Sigma_21'] ).rename({'target_1_dim_idx':'target_dim_idx2'}),
-                            renaming_convention( xr_dataset['Sigma_22'] - _np.square( xr_dataset['psi2']*_xr.DataArray(0.99*_np.eye(xr_dataset['Sigma_22'].sizes['Sigma_22_dim_0']), dims=['Sigma_22_dim_0','Sigma_22_dim_1']) ).rename({'target_2_dim_idx_bis':'target_dim_idx2'}) )
+                            renaming_convention( xr_dataset['Sigma_22'] - _np.square( xr_dataset['psi2']*_xr.DataArray(0.99*_np.eye(xr_dataset['Sigma_22'].sizes['Sigma_22_dim_0']), dims=['Sigma_22_dim_0','Sigma_22_dim_1']) ) ).rename({'target_2_dim_idx_bis':'target_dim_idx2'})
                         ],
                         dim='target_dim_idx2'
                     ).rename({'target_2_dim_idx':'target_dim_idx'})
