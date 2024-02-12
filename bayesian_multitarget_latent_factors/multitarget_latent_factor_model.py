@@ -33,7 +33,8 @@ import pkg_resources
 
 __all__ = ['sample_from_prior', 'renaming_convention', 'default_basis_dictionary_builder', 'compute_BLambaBetaX', 'sample_from_posterior',
             'sample_from_posterior_predictive', 'dataset_generator', 'one_functional_target_dictionary_builder',
-            'sample_conditional_predictive', 'sample_unconditional_predictive', 'get_relationship_between_targets','Varimax_RSP']
+            'sample_conditional_predictive', 'sample_unconditional_predictive',
+            'get_relationship_between_targets','Varimax_RSP', 'sample_projection_on_varimaxed_space']
 
 
 def sample_from_prior(data_dic, X_test, rng_seed, n_samples):
@@ -2204,6 +2205,10 @@ def Varimax_RSP(idata):
                    transformations to the numpy array of latent factors.
 
     """
+    
+    # Validate idata
+    if not isinstance(idata, _az.InferenceData):
+        raise ValueError("idata must be an arviz.InferenceData object.")
 
     aux_xr = _xr.concat(
         [
@@ -2307,3 +2312,287 @@ def Varimax_RSP(idata):
             }
         )
     )
+
+
+
+def sample_projection_on_varimaxed_space(rng_seed, idata, Varimax_res_xr, X_test = None, Y1_test = None, Y2_test = None, ):
+    """
+    Projects the training/test samples in the space of Varimax rotated posterior latent factors, considering
+    either the training dataset or a provided test dataset. This projection is key for predictions and interpretations
+    in the rotated space. When test data (`X_test`) is provided, it computes the projection for this new data. Optionally,
+    it can incorporate observations (`Y1_test`, `Y2_test`) to refine the projection.
+
+    Parameters
+    ----------
+    rng_seed : int
+        Seed for the random number generator, ensuring reproducibility.
+    idata : az.InferenceData
+        The inference data object resulting from sample_from_posterior.
+    Varimax_res_xr : xr.Dataset
+        The dataset containing the results of the Varimax rotation applied to the latent factors, including
+        the rotation matrix, sign adjustments, and permutation matrix.
+    X_test : np.ndarray, optional
+        A 2D array of the test set covariates. If provided, the function computes the projection on the test data.
+        Otherwise, it defaults to None and the function uses the training set for projection.
+    Y1_test : np.ndarray, optional
+        A 2D array of observations for the first target in the test set. It is used to adjust the projection
+        based on observed values. Defaults to None.
+    Y2_test : np.ndarray, optional
+        A 2D array of observations for the second target in the test set. It is used alongside `Y1_test` to adjust
+        the projection based on observed values. Defaults to None.
+
+    Returns
+    -------
+    xr.DataArray or xr.Dataset
+        If `X_test` is None, returns an xarray DataArray containing the projected latent factors for the training set.
+        If `X_test` is provided, returns an xarray Dataset with two items: `η_expected` and `η_predictive`, representing
+        the expected and predictive projections of the latent factors for the test set, respectively. The predictive
+        projections account for uncertainty in the predictions.
+
+    Notes
+    -----
+    The η obtained from the posterior block of the Inference Data are used when studying the training dataset, in this case
+    this function only applies the Varimax correction to the latent scores, when a test dataset is provided, appropriate projections
+    are needed first, depending on which information is provided the result will have differing accuracies.
+
+    See Also
+    --------
+    Varimax_RSP : Function that performs Varimax rotation on the posterior samples of latent factors.
+
+    References
+    ----------
+    Kaiser, H.F. (1958). The varimax criterion for analytic rotation in factor analysis. Psychometrika, 23(3), 187-200.
+    Papastamoulis, Panagiotis, & Ntzoufras, Ioannis. (2022). On the identifiability of Bayesian factor analytic models. 
+    Statistics and Computing, 32(2), 23. https://doi.org/10.1007/s11222-022-10084-4
+
+    """
+
+    # Validate rng_seed
+    if not isinstance(rng_seed, (int, _np.int_)):
+        raise ValueError("rng_seed must be an integer.")
+    
+    # Validate idata
+    if not isinstance(idata, _az.InferenceData):
+        raise ValueError("idata must be an arviz.InferenceData object.")
+    
+    # Validate Varimax_res_xr
+    if not isinstance(Varimax_res_xr, _xr.Dataset):
+        raise ValueError("Varimax_res_xr must be an xarray.Dataset object.")
+    
+    # Validate X_test, if provided
+    if X_test is not None:
+        if not isinstance(X_test, _np.ndarray) or X_test.ndim != 2:
+            raise ValueError("X_test must be a 2D numpy array.")
+    
+    # Validate Y1_test, if provided
+    if Y1_test is not None:
+        if not isinstance(Y1_test, _np.ndarray) or Y1_test.ndim != 2:
+            raise ValueError("Y1_test must be a 2D numpy array.")
+    
+    # Validate Y2_test, if provided
+    if Y2_test is not None:
+        if not isinstance(Y2_test, _np.ndarray) or Y2_test.ndim != 2:
+            raise ValueError("Y2_test must be a 2D numpy array.")
+
+    if X_test is not None:
+        # Check if 'r' is in idata.constant_data
+        if 'r' not in idata.constant_data:
+            raise ValueError("'r' is missing in idata.constant_data.")
+        if X_test.shape[0] != idata.constant_data['r'].values[0]:
+            raise ValueError(f"X_test's first dimension must match idata.constant_data['r'] = {idata.constant_data['r'].values[0]}.")
+
+    if Y1_test is not None:
+        # Ensure X_test is provided when Y1_test is provided
+        if X_test is None:
+            raise ValueError("X_test must be provided if Y1_test is specified.")
+        # Check if 'L1' is in idata.constant_data
+        if 'L1' not in idata.constant_data:
+            raise ValueError("'L1' is missing in idata.constant_data.")
+        if Y1_test.shape[0] != idata.constant_data['L1'].values[0]:
+            raise ValueError(f"Y1_test's first dimension must match idata.constant_data['L1'] = {idata.constant_data['L1'].values[0]}.")
+        if X_test.shape[1] != Y1_test.shape[1]:
+            raise ValueError("X_test and Y1_test must have the same number of columns (samples).")
+
+    if Y2_test is not None:
+        # Ensure X_test is provided when Y2_test is provided
+        if X_test is None:
+            raise ValueError("X_test must be provided if Y2_test is specified.")
+        # Check if 'L2' is in idata.constant_data
+        if 'L2' not in idata.constant_data:
+            raise ValueError("'L2' is missing in idata.constant_data.")
+        if Y2_test.shape[0] != idata.constant_data['L2'].values[0]:
+            raise ValueError(f"Y2_test's first dimension must match idata.constant_data['L2'] = {idata.constant_data['L2'].values[0]}.")
+        if X_test.shape[1] != Y2_test.shape[1]:
+            raise ValueError("X_test and Y2_test must have the same number of columns (samples).")        
+
+    from copy import deepcopy
+
+    rng = _np.random.default_rng(rng_seed)
+
+    if X_test is None:
+        # the order ['latent_factor_idx_bis','latent_factor_idx'] implies a transposition of the rotation matrix
+        res_xr = \
+        _xrein.linalg.matmul(
+            Varimax_res_xr['P'],
+            _xrein.linalg.matmul(
+                Varimax_res_xr['R'],
+                renaming_convention( idata.posterior['eta'] ),
+                dims=[['latent_factor_idx_bis','latent_factor_idx'],['latent_factor_idx','sample_idx']]
+            ).rename({'latent_factor_idx_bis':'latent_factor_idx'})*Varimax_res_xr['S'],
+            dims=[['latent_factor_idx_bis','latent_factor_idx'],['latent_factor_idx','sample_idx']]
+        ).rename({'latent_factor_idx_bis':'latent_factor_idx'})
+        return( res_xr )
+
+    xr_dataset = deepcopy( idata.posterior )
+
+    η_estimate = \
+    _xrein.linalg.matmul(
+        renaming_convention( xr_dataset['beta'] ),
+        _xr.DataArray(X_test, dims=['covariate_idx','sample_idx']),
+        dims=[['latent_factor_idx','covariate_idx'],['covariate_idx','sample_idx']]
+    )
+
+    Σ = _xr.DataArray(_np.eye(η_estimate.sizes['latent_factor_idx']), dims=['latent_factor_idx','latent_factor_idx2'])
+    aux_xr = sample_unconditional_predictive(idata, X_test, 13, required='predictive estimate')
+
+    if (Y1_test is None) and (Y2_test is None):
+        n_provided_Ys = 0
+    elif (not Y1_test is None) and (not Y2_test is None):
+        n_provided_Ys = 2
+        Y1_test_xr = _xr.DataArray(
+            Y1_test,
+            dims=['target_1_dim_idx','sample_idx']
+        )
+        Y2_test_xr = _xr.DataArray(
+            Y2_test,
+            dims=['target_2_dim_idx','sample_idx']
+        )
+        ΔY_xr = \
+        _xr.concat(
+            [
+                renaming_convention( Y1_test_xr ).rename({'target_1_dim_idx':'target_dim_idx'}),
+                renaming_convention( Y2_test_xr ).rename({'target_2_dim_idx':'target_dim_idx'})
+            ],
+            dim='target_dim_idx'
+        ) - _xr.concat(
+            [
+                aux_xr['Y1'].rename({'target_1_dim_idx':'target_dim_idx'}),
+                aux_xr['Y2'].rename({'target_2_dim_idx':'target_dim_idx'})
+            ],
+            dim='target_dim_idx'
+        )
+
+        invΣy = \
+        _xrein.linalg.inv(
+            _xr.concat(
+                [
+                    _xr.concat(
+                        [
+                            renaming_convention( xr_dataset['Sigma_11'] ).rename({'target_1_dim_idx_bis':'target_dim_idx2'}),
+                            renaming_convention( xr_dataset['Sigma_12'] ).rename({'target_2_dim_idx':'target_dim_idx2'})
+                        ],
+                        dim='target_dim_idx2'
+                    ).rename({'target_1_dim_idx':'target_dim_idx'}),
+                    _xr.concat(
+                        [
+                            renaming_convention( xr_dataset['Sigma_21'] ).rename({'target_1_dim_idx':'target_dim_idx2'}),
+                            renaming_convention( xr_dataset['Sigma_22'] ).rename({'target_2_dim_idx_bis':'target_dim_idx2'})
+                        ],
+                        dim='target_dim_idx2'
+                    ).rename({'target_2_dim_idx':'target_dim_idx'})
+                ],
+                dim='target_dim_idx'
+            ).rename('Sigma'),
+            dims=['target_dim_idx','target_dim_idx2']
+        )
+
+        Σyη = \
+        _xr.concat(
+            [
+                Varimax_res_xr['B1Λ1'].rename({'target_1_dim_idx':'target_dim_idx'}),
+                Varimax_res_xr['B2Λ2'].rename({'target_2_dim_idx':'target_dim_idx'})
+            ],
+            dim='target_dim_idx'
+        )
+
+    else:
+        n_provided_Ys = 1
+        if not Y1_test is None:
+            # Y1 is provided Y2 not
+            Y1_test_xr = _xr.DataArray(
+                Y1_test,
+                dims=['target_1_dim_idx','sample_idx']
+            )
+            g = 1
+            ΔY_xr = Y1_test_xr.rename({'target_1_dim_idx':'target_dim_idx'}) - aux_xr['Y1'].rename({'target_1_dim_idx':'target_dim_idx'})
+        else:
+            # Y2 is provided Y1 not
+            Y2_test_xr = _xr.DataArray(
+                Y2_test,
+                dims=['target_2_dim_idx','sample_idx']
+            )
+            g = 2
+            ΔY_xr = Y2_test_xr.rename({'target_2_dim_idx':'target_dim_idx'}) - aux_xr['Y2'].rename({'target_2_dim_idx':'target_dim_idx'})
+        invΣy = _xrein.linalg.inv(
+            renaming_convention( xr_dataset[f'Sigma_{g}{g}'] ).rename({f'target_{g}_dim_idx':'target_dim_idx',f'target_{g}_dim_idx_bis':'target_dim_idx2'}),
+            dims=['target_dim_idx','target_dim_idx2']
+        )
+        Σyη = Varimax_res_xr[f'B{g}Λ{g}'].rename({f'target_{g}_dim_idx':'target_dim_idx'})
+
+
+    if not ((Y1_test is None) and (Y2_test is None)):
+        η_estimate += \
+        _xrein.linalg.matmul(
+            Σyη,
+            _xrein.linalg.matmul(
+                invΣy,
+                ΔY_xr,
+                dims=[['target_dim_idx','target_dim_idx2'],['target_dim_idx','sample_idx']]
+            ),
+            dims=[['latent_factor_idx','target_dim_idx'],['target_dim_idx','sample_idx']]
+        )
+
+        Σ = \
+        _xrein.linalg.matmul(
+            Σyη,
+            _xrein.linalg.matmul(
+                invΣy,
+                Σyη,
+                dims=[['target_dim_idx','target_dim_idx2'],['target_dim_idx','latent_factor_idx']]
+            ),
+            dims=[['latent_factor_idx','target_dim_idx'],['target_dim_idx','latent_factor_idx']]
+        ) - Σ
+        Σ = -Σ
+
+    CholeskyΣ = _xrein.linalg.cholesky(
+        Σ,
+        dims=['latent_factor_idx','latent_factor_idx2']
+    )
+
+    η_predictive = deepcopy(η_estimate)
+    η_predictive += \
+    _xrein.linalg.matmul(
+        CholeskyΣ,
+        _xr.DataArray(
+            rng.normal(size = η_estimate.shape),
+            dims=η_estimate.dims
+        ),
+        dims=[['latent_factor_idx','latent_factor_idx2'],['latent_factor_idx','sample_idx']]
+    )
+
+    """
+    return(
+        xr.Dataset(
+            {
+                'η_expected': expected_η_xr,
+                'η_predictive': η_predictive,
+            }
+        )
+    )
+    """
+
+    return(
+        η_predictive
+    )
+
+
