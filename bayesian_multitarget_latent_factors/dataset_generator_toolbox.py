@@ -102,8 +102,16 @@ def dataset_generator(rng_seed,
     rng = np.random.default_rng(rng_seed)
     data_dic = default_basis_dictionary_builder(
         rng.integers(1000000),
-        N = n_train_samples + n_test_samples
+        N = n_train_samples + n_test_samples,
+        r = r, L1 = L1, domain_range_1 = domain_range_1, p1 = p1,
+        L2 = L2, domain_range_2 = domain_range_2, p2 = p2, k = k,
+        X_scale_multiplier = X_scale_multiplier, nu = nu, v = v,
+        alpha_1 = alpha_1, alpha_2 = alpha_2, alpha_psi = alpha_psi,
+        alpha_sigma = alpha_sigma,
+        psi_noise_scale_multiplier_1 = psi_noise_scale_multiplier_1, psi_noise_scale_multiplier_2 = psi_noise_scale_multiplier_2,
+        theta_noise_scale_multiplier_1 = theta_noise_scale_multiplier_1, theta_noise_scale_multiplier_2 = theta_noise_scale_multiplier_2
     )
+    
     idata_simul = \
     sample_from_prior(
         data_dic, rng.normal(size=(data_dic['r'],2)), rng.integers(1000000), 10
