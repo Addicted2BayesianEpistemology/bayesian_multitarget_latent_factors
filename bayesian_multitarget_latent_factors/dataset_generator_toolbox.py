@@ -680,11 +680,11 @@ def dataset_generator_2D_domain(rng_seed,
     data_dic['N'] = n_train_samples
 
     aux_xr = \
-    _xr.Dataset(
+    xr.Dataset(
         {var: idata_simul[var].sel(sample=0) for var in idata_simul.data_vars}
     ).drop(['log_lik_y','y1_predictive','y2_predictive','y1_test_predictive','y2_test_predictive'])
 
-    aux_xr['X_test'] = _xr.DataArray(X_test, dims=['X_test_dim_0','X_test_dim_1'])
+    aux_xr['X_test'] = xr.DataArray(X_test, dims=['X_test_dim_0','X_test_dim_1'])
     aux_xr['y1'] = y1_test
     aux_xr['y2'] = y2_test
 

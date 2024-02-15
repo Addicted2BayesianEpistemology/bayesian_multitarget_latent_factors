@@ -1682,7 +1682,7 @@ def compute_likelihood(inference_data, group, samples_y1, samples_y2, samples_X)
                 likelihood = compute_likelihood_for_sample(draw_data, samples_y1, samples_y2, samples_X)
                 likelihoods.append(likelihood[np.newaxis,:])
         likelihoods_array = np.reshape(np.array(likelihoods), (group_data.sizes['chain'],group_data.sizes['draw'],samples_X.shape[1])) # reshape fills rows first as we need
-        likelihoods_xr = _xr.DataArray( likelihoods_array, dims=['chain','draw','sample_idx'] )
+        likelihoods_xr = xr.DataArray( likelihoods_array, dims=['chain','draw','sample_idx'] )
     elif 'sample' in group_data.dims:
         # If the data is indexed by 'sample'
         for sample in group_data.sample:
@@ -1695,7 +1695,7 @@ def compute_likelihood(inference_data, group, samples_y1, samples_y2, samples_X)
             likelihood = compute_likelihood_for_sample(sample_data, samples_y1, samples_y2, samples_X)
             likelihoods.append(likelihood[np.newaxis,:])
         likelihoods_array = np.reshape(np.array(likelihoods), (group_data.sizes['sample'], samples_X.shape[1]))
-        likelihoods_xr = _xr.DataArray( likelihoods_array, dims=['sample','sample_idx'] )
+        likelihoods_xr = xr.DataArray( likelihoods_array, dims=['sample','sample_idx'] )
     else:
         raise ValueError("Unsupported dimension names in the group data")
 
@@ -1710,16 +1710,16 @@ def compute_likelihood_for_sample(sample_data, samples_y1, samples_y2, samples_X
     from scipy.stats import multivariate_normal
 
     Σ = \
-    _xr.concat(
+    xr.concat(
         [
-            _xr.concat(
+            xr.concat(
                 [
                     renaming_convention( sample_data['Sigma_11'] ).rename({'target_1_dim_idx_bis':'target_dim_idx_bis'}),
                     renaming_convention( sample_data['Sigma_12'] ).rename({'target_2_dim_idx':'target_dim_idx_bis'})
                 ],
                 dim='target_dim_idx_bis'
             ).rename({'target_1_dim_idx':'target_dim_idx'}),
-            _xr.concat(
+            xr.concat(
                 [
                     renaming_convention( sample_data['Sigma_21'] ).rename({'target_1_dim_idx':'target_dim_idx_bis'}),
                     renaming_convention( sample_data['Sigma_22'] ).rename({'target_2_dim_idx_bis':'target_dim_idx_bis'})
