@@ -2,6 +2,7 @@
 import numpy as np
 import arviz as az
 import xarray as xr
+import xarray_einstats as xrein
 
 from .multitarget_latent_factor_model import renaming_convention
 
