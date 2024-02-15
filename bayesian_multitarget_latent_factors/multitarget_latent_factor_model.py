@@ -1708,6 +1708,7 @@ def compute_likelihood_for_sample(sample_data, samples_y1, samples_y2, samples_X
     # Insert your model-specific likelihood computation here
 
     from scipy.stats import multivariate_normal
+	from scipy.stats import Covariance
 
     Σ = \
     xr.concat(
@@ -1732,7 +1733,7 @@ def compute_likelihood_for_sample(sample_data, samples_y1, samples_y2, samples_X
 
     L = np.linalg.cholesky(Σ)
     log_det_Σ = 2*np.log(np.abs(np.diag(L))).sum()
-    cov_obj_Σ = _spst.Covariance.from_cholesky(L)
+    cov_obj_Σ = Covariance.from_cholesky(L)
 
     y1_estimate = sample_data['regr_coeffs1'].values @ samples_X
     y2_estimate = sample_data['regr_coeffs2'].values @ samples_X
