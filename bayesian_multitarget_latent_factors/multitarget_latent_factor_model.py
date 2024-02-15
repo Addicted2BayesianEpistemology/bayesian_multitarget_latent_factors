@@ -144,7 +144,7 @@ def sample_from_prior(data_dic, X_test, rng_seed, n_samples):
 
     # Validate t1, t2 - 1D numpy arrays of floats
     for key in ['t1', 't2']:
-        if not isinstance(data_dic[key], np.ndarray) or data_dic[key].ndim != 1 or data_dic[key].dtype.kind not in 'if':
+        if not isinstance(data_dic[key], np.ndarray) or data_dic[key].dtype.kind not in 'if':
             raise ValueError(f"{key} must be a 1D numpy array of floats")
 
     # Validate y1, y2 - 2D numpy arrays of floats
