@@ -1680,8 +1680,8 @@ def compute_likelihood(inference_data, group, samples_y1, samples_y2, samples_X)
                 
                 # Compute likelihood for the draw (placeholder for user implementation)
                 likelihood = compute_likelihood_for_sample(draw_data, samples_y1, samples_y2, samples_X)
-                likelihoods.append(likelihood[_np.newaxis,:])
-        likelihoods_array = _np.reshape(_np.array(likelihoods), (group_data.sizes['chain'],group_data.sizes['draw'],samples_X.shape[1])) # reshape fills rows first as we need
+                likelihoods.append(likelihood[np.newaxis,:])
+        likelihoods_array = np.reshape(np.array(likelihoods), (group_data.sizes['chain'],group_data.sizes['draw'],samples_X.shape[1])) # reshape fills rows first as we need
         likelihoods_xr = _xr.DataArray( likelihoods_array, dims=['chain','draw','sample_idx'] )
     elif 'sample' in group_data.dims:
         # If the data is indexed by 'sample'
@@ -1693,8 +1693,8 @@ def compute_likelihood(inference_data, group, samples_y1, samples_y2, samples_X)
             
             # Compute likelihood for the sample (placeholder for user implementation)
             likelihood = compute_likelihood_for_sample(sample_data, samples_y1, samples_y2, samples_X)
-            likelihoods.append(likelihood[_np.newaxis,:])
-        likelihoods_array = _np.reshape(_np.array(likelihoods), (group_data.sizes['sample'], samples_X.shape[1]))
+            likelihoods.append(likelihood[np.newaxis,:])
+        likelihoods_array = np.reshape(np.array(likelihoods), (group_data.sizes['sample'], samples_X.shape[1]))
         likelihoods_xr = _xr.DataArray( likelihoods_array, dims=['sample','sample_idx'] )
     else:
         raise ValueError("Unsupported dimension names in the group data")
@@ -1730,41 +1730,41 @@ def compute_likelihood_for_sample(sample_data, samples_y1, samples_y2, samples_X
         dim='target_dim_idx'
     ).values
 
-    L = _np.linalg.cholesky(Σ)
-    log_det_Σ = 2*_np.log(_np.abs(_np.diag(L))).sum()
+    L = np.linalg.cholesky(Σ)
+    log_det_Σ = 2*np.log(np.abs(np.diag(L))).sum()
     cov_obj_Σ = _spst.Covariance.from_cholesky(L)
 
     y1_estimate = sample_data['regr_coeffs1'].values @ samples_X
     y2_estimate = sample_data['regr_coeffs2'].values @ samples_X
 
-    y_estimate = _np.concatenate([y1_estimate, y2_estimate])
-    samples_y = _np.concatenate([samples_y1, samples_y2])
+    y_estimate = np.concatenate([y1_estimate, y2_estimate])
+    samples_y = np.concatenate([samples_y1, samples_y2])
 
-    log_lklhood = _np.zeros(samples_y.shape[1])
+    log_lklhood = np.zeros(samples_y.shape[1])
     for i in range(samples_y.shape[1]):
         # Identify indices of non-missing (finite) data
-        finite_indices = _np.isfinite(samples_y[:,i])
+        finite_indices = np.isfinite(samples_y[:,i])
 
         """
-        Rs = _np.zeros((_np.sum(finite_indices), len(finite_indices)))
-        Rs[_np.arange(Rs.shape[0]), finite_indices] = 1
+        Rs = np.zeros((np.sum(finite_indices), len(finite_indices)))
+        Rs[np.arange(Rs.shape[0]), finite_indices] = 1
         """ 
         """
-        RsTRs = _np.diag(finite_indices, ).astype(_np.float_)
+        RsTRs = np.diag(finite_indices, ).astype(np.float_)
         """
 
         # Filter out missing data from x, mean, and corresponding rows/columns in cov
-        y_filtered = _np.zeros(samples_y.shape[0])
+        y_filtered = np.zeros(samples_y.shape[0])
         y_filtered[finite_indices] = samples_y[finite_indices,i]
-        mean_filtered = _np.zeros(samples_y.shape[0])
+        mean_filtered = np.zeros(samples_y.shape[0])
         mean_filtered[finite_indices] = y_estimate[finite_indices,i]
-        cov_filtered = Σ[_np.ix_(finite_indices, finite_indices)]
+        cov_filtered = Σ[np.ix_(finite_indices, finite_indices)]
 
         # Compute and return the log PDF using the filtered data
         log_lklhood[i] = multivariate_normal.logpdf(y_filtered, mean_filtered, cov_obj_Σ)    
-        log_lklhood[i] += 0.5*(~finite_indices).sum()*_np.log(2*_np.pi)
+        log_lklhood[i] += 0.5*(~finite_indices).sum()*np.log(2*np.pi)
         log_lklhood[i] += 0.5*log_det_Σ
-        log_lklhood[i] -= 0.5*_np.linalg.slogdet(Σ[_np.ix_(finite_indices,finite_indices)])[1]
+        log_lklhood[i] -= 0.5*np.linalg.slogdet(Σ[np.ix_(finite_indices,finite_indices)])[1]
 
     return log_lklhood
 

@@ -8,7 +8,7 @@ __all__ = ['plot_unstructured_heatmap',]
 def plot_unstructured_heatmap(values, locations, method='cubic', grid_res=100, plot_points=False,
                               ax=None, xlabel=None, ylabel=None, title='Heatmap of Interpolated Values',
                               colorbar_label='Interpolated Value', show_colorbar=True,
-                              colormap='viridis', max_distance=None, p_NN_distance_max_distance = _np.inf, **kwargs):
+                              colormap='viridis', max_distance=None, p_NN_distance_max_distance = np.inf, **kwargs):
     """
     Plots a heatmap from unstructured data points using interpolation on an optional specified axes,
     with options for customizing the appearance. Leaves white spaces in areas without nearby evaluated points,

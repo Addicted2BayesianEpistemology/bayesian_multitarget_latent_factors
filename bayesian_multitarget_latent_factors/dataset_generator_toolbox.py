@@ -452,7 +452,7 @@ def radial_basis_function(r):
     ndarray: Evaluated thin-plate spline function.
     """
     # Use np.where to avoid log(0) which is undefined.
-    return _np.where(r == 0, 0, r**2 * _np.log(r))
+    return np.where(r == 0, 0, r**2 * np.log(r))
 
 
 def build_tps_basis_matrix(evaluation_points, center_points):
@@ -467,25 +467,25 @@ def build_tps_basis_matrix(evaluation_points, center_points):
     ndarray: The Mx(N+3) basis matrix for thin-plate splines.
 
     Example:
-    evaluation_points = _np.array([[0.5, 0.5], [1.5, 1.5], [1.5, 0.5], [0.5, 1.5]])
-    center_points = _np.array([[0, 0], [1, 1], [1, 0], [0, 1]])
+    evaluation_points = np.array([[0.5, 0.5], [1.5, 1.5], [1.5, 0.5], [0.5, 1.5]])
+    center_points = np.array([[0, 0], [1, 1], [1, 0], [0, 1]])
     basis_matrix = build_tps_basis_matrix(evaluation_points, center_points)
     print(basis_matrix)
     """
     # Compute the pairwise distances between evaluation points and center points
-    r = _np.sqrt(_np.sum((evaluation_points[:, _np.newaxis, :] - center_points[_np.newaxis, :, :]) ** 2, axis=-1))
+    r = np.sqrt(np.sum((evaluation_points[:, np.newaxis, :] - center_points[np.newaxis, :, :]) ** 2, axis=-1))
     # Apply the radial basis function
     basis_matrix = radial_basis_function(r)
     
     # Append ones and linear terms to the evaluation points to account for the affine part
     M = evaluation_points.shape[0]
-    P = _np.hstack((_np.ones((M, 1)), evaluation_points))
-    basis_matrix = _np.hstack((basis_matrix, P))
+    P = np.hstack((np.ones((M, 1)), evaluation_points))
+    basis_matrix = np.hstack((basis_matrix, P))
     
     if center_points.shape[0] > 0:
         # Only append zeros to P if there are center points
-        P_extended = _np.hstack((P, _np.zeros((P.shape[0], center_points.shape[0]))))
-        basis_matrix = _np.vstack((basis_matrix, _np.zeros((3, basis_matrix.shape[1]))))
+        P_extended = np.hstack((P, np.zeros((P.shape[0], center_points.shape[0]))))
+        basis_matrix = np.vstack((basis_matrix, np.zeros((3, basis_matrix.shape[1]))))
     
     return basis_matrix
 
@@ -500,33 +500,33 @@ def compactly_supported_radial_basis_fun(r, ε):
     Retunrs:
     ndarray: Evaluated bump functions
     """
-    return _np.where(r*ε >= 1, 0, _np.exp(-1/(1 - _np.square(r*ε))))
+    return np.where(r*ε >= 1, 0, np.exp(-1/(1 - np.square(r*ε))))
 
 
 def compute_euclidean_distances(evaluation_points, center_points):
     # Convert lists to numpy arrays if they aren't already
-    evaluation_points = _np.array(evaluation_points)
-    center_points = _np.array(center_points)
+    evaluation_points = np.array(evaluation_points)
+    center_points = np.array(center_points)
     
     # Calculate the differences between each evaluation point and center point
     # This involves expanding both arrays to 3 dimensions to leverage broadcasting for pairwise differences
-    diff = evaluation_points[:, _np.newaxis, :] - center_points[_np.newaxis, :, :]
+    diff = evaluation_points[:, np.newaxis, :] - center_points[np.newaxis, :, :]
     
     # Compute the Euclidean distances using the norm function along the last axis (coordinates axis)
-    distances = _np.linalg.norm(diff, axis=-1)
+    distances = np.linalg.norm(diff, axis=-1)
     
     return distances
 
 def generate_2D_grid(x_start, x_end, x_num, y_start, y_end, y_num):
     # Generate linearly spaced points for x and y axes
-    x_eval_points = _np.linspace(x_start, x_end, x_num)
-    y_eval_points = _np.linspace(y_start, y_end, y_num)
+    x_eval_points = np.linspace(x_start, x_end, x_num)
+    y_eval_points = np.linspace(y_start, y_end, y_num)
     
     # Create a meshgrid for x and y points
-    X, Y = _np.meshgrid(x_eval_points, y_eval_points)
+    X, Y = np.meshgrid(x_eval_points, y_eval_points)
     
     # Reshape and stack the X and Y coordinates into a two-column array
-    eval_points = _np.vstack([X.ravel(), Y.ravel()]).T
+    eval_points = np.vstack([X.ravel(), Y.ravel()]).T
     
     return eval_points
 
@@ -627,7 +627,7 @@ def dataset_generator_2D_domain(rng_seed,
     execute_HMC: For executing HMC sampling with the generated dataset.
     """
     
-    rng = _np.random.default_rng(rng_seed)
+    rng = np.random.default_rng(rng_seed)
 
     locs = generate_2D_grid(domain_range_2_x_axis[0], domain_range_2_x_axis[1], L2_x_axis,
                             domain_range_2_y_axis[0], domain_range_2_y_axis[1], L2_y_axis)
@@ -637,11 +637,11 @@ def dataset_generator_2D_domain(rng_seed,
 
 
     B2 = \
-    _np.concatenate(
+    np.concatenate(
         [
-            _np.ones((locs.shape[0], 1)),
+            np.ones((locs.shape[0], 1)),
             locs,
-            locs.prod(axis=1)[:,_np.newaxis],
+            locs.prod(axis=1)[:,np.newaxis],
             compactly_supported_radial_basis_fun(
                 compute_euclidean_distances(
                     locs,
