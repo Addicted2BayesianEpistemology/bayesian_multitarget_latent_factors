@@ -3,6 +3,7 @@ import numpy as np
 import arviz as az
 import xarray as xr
 
+from .multitarget_latent_factor_model import renaming_convention
 
 def _Varimax_RSP(Lambda):
     '''
