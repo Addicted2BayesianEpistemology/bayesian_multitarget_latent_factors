@@ -5,6 +5,7 @@ import arviz as az
 import xarray as xr
 import xarray_einstats as xrein
 import skfda.representation.basis as scikit_basis_funs
+from .multitarget_latent_factor_model import sample_from_prior
 
 
 __all__ = ['default_basis_dictionary_builder', 'dataset_generator', 'one_functional_target_dictionary_builder',
