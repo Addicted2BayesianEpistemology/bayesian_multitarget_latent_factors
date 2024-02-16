@@ -1708,7 +1708,7 @@ def compute_likelihood_for_sample(sample_data, samples_y1, samples_y2, samples_X
     # Insert your model-specific likelihood computation here
 
     from scipy.stats import multivariate_normal
-	from scipy.stats import Covariance
+    from scipy.stats import Covariance
 
     Σ = \
     xr.concat(
