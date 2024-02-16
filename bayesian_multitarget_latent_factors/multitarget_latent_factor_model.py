@@ -930,6 +930,8 @@ def sample_from_posterior(data_dic,
             {'prior_predictive': prior_samples_xr[['y1_predictive','y2_predictive']]}
         )
         idata = idata2.assign(y_prior=prior_samples_xr['log_lik_y'].rename({'log_lik_y_dim_0':'y_dim_0'}), groups='log_likelihood')
+    else:
+        idata = idata2.copy()
 
     if X_test is not None:
         if do_prior_sampling:
