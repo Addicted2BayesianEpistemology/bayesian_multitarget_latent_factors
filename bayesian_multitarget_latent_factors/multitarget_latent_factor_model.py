@@ -737,6 +737,7 @@ def sample_from_posterior(data_dic,
                         laplace_draws = 100,
                         iter_warmup = 500,
                         iter_sampling = 1000,
+                        do_prior_sampling = True,
                         prior_draws = 1000,
                         max_treedepth = 12,
                         X_test = None,
@@ -771,9 +772,13 @@ def sample_from_posterior(data_dic,
         
     iter_sampling : int, optional
         Number of sampling iterations for HMC. Defaults to 1000.
-        
+
+    do_prior_sampling : bool, optional
+        Whether to also sample from the prior distribution    
+            
     prior_draws : int, optional
         Number of draws to sample from the prior. Defaults to 1000.
+        ignored if do_prior_sampling is False
         
     max_treedepth : int, optional
         XD. Defaults to 12.
@@ -886,20 +891,21 @@ def sample_from_posterior(data_dic,
     )
 
     # Sampling from the Prior
-    if X_test is not None:
-        prior_samples_xr = sample_from_prior(
-            data_dic,
-            X_test,
-            rng.integers(1000000),
-            prior_draws
-        )
-    else:
-        prior_samples_xr = sample_from_prior(
-            data_dic,
-            rng.normal(size=(data_dic['r'], 2)),
-            rng.integers(1000000),
-            prior_draws
-        )
+    if do_prior_sampling:
+        if X_test is not None:
+            prior_samples_xr = sample_from_prior(
+                data_dic,
+                X_test,
+                rng.integers(1000000),
+                prior_draws
+            )
+        else:
+            prior_samples_xr = sample_from_prior(
+                data_dic,
+                rng.normal(size=(data_dic['r'], 2)),
+                rng.integers(1000000),
+                prior_draws
+            )
 
     # Add the prior samples inside the inference data object and fix some naming of variables
     idata2 = \
@@ -915,19 +921,23 @@ def sample_from_posterior(data_dic,
         },
         groups='log_likelihood'
     )
-    idata2.add_groups(
-        {'prior': prior_samples_xr.drop(['log_lik_y', 'y1_predictive', 'y2_predictive', 'y1_test_predictive', 'y2_test_predictive'])}
-    )
-    idata2.add_groups(
-        {'prior_predictive': prior_samples_xr[['y1_predictive','y2_predictive']]}
-    )
-    idata = idata2.assign(y_prior=prior_samples_xr['log_lik_y'].rename({'log_lik_y_dim_0':'y_dim_0'}), groups='log_likelihood')
 
-    # Add the prior predictions on X_test
-    if X_test is not None:
-        idata.add_groups(
-            {'predictions': prior_samples_xr[['y1_test_predictive','y2_test_predictive']].rename({'y1_test_predictive':'y1_test_prior_predictive', 'y2_test_predictive':'y2_test_prior_predictive'})}
+    if do_prior_sampling:
+        idata2.add_groups(
+            {'prior': prior_samples_xr.drop(['log_lik_y', 'y1_predictive', 'y2_predictive', 'y1_test_predictive', 'y2_test_predictive'])}
         )
+        idata2.add_groups(
+            {'prior_predictive': prior_samples_xr[['y1_predictive','y2_predictive']]}
+        )
+        idata = idata2.assign(y_prior=prior_samples_xr['log_lik_y'].rename({'log_lik_y_dim_0':'y_dim_0'}), groups='log_likelihood')
+
+    if X_test is not None:
+        if do_prior_sampling:
+            # Add the prior predictions on X_test
+            idata.add_groups(
+                {'predictions': prior_samples_xr[['y1_test_predictive','y2_test_predictive']].rename({'y1_test_predictive':'y1_test_prior_predictive', 'y2_test_predictive':'y2_test_prior_predictive'})}
+            )
+
         idata.add_groups(
             {
                 'predictions_constant_data': xr.Dataset(
@@ -939,12 +949,19 @@ def sample_from_posterior(data_dic,
             }
         )
         aux_xr = sample_from_posterior_predictive(rng.integers(1000000), idata, X_test)
-        idata = idata = idata.assign(
-            y1_test_posterior_predictive = aux_xr['y1_posterior_predictive'],
-            y2_test_posterior_predictive = aux_xr['y2_posterior_predictive'],
-            groups = 'predictions'
-        )
-        
+        if do_prior_sampling:
+            idata = idata.assign(
+                y1_test_posterior_predictive = aux_xr['y1_posterior_predictive'],
+                y2_test_posterior_predictive = aux_xr['y2_posterior_predictive'],
+                groups = 'predictions'
+            )
+        else:
+            idata.add_groups(
+                {
+                    'predictions': aux_xr[['y1_posterior_predictive','y2_posterior_predictive']].rename({'y1_posterior_predictive':'y1_test_posterior_predictive','y2_posterior_predictive':'y2_test_posterior_predictive'})
+                }
+            )
+
     
     return(idata)
 
