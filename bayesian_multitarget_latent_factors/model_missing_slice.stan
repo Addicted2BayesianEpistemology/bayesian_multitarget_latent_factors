@@ -18,10 +18,8 @@ data {
   matrix[L1,N] y1;             // target for branch 1
   matrix[L2,N] y2;             // target for branch 2
   matrix[r,N] X;             // covariates
-  int N_nonmissing_y1;
-  int N_nonmissing_y2;
-  array[N_nonmissing_y1] int y1_missing;  // booleans, 0 if missing, 1 otherwise
-  array[N_nonmissing_y2] int y2_missing;  // booleans, 0 if missing, 1 otherwise
+  array[L1*N] int y1_missing;  // booleans, 0 if missing, 1 otherwise
+  array[L2*N] int y2_missing;  // booleans, 0 if missing, 1 otherwise
 
   // basis functions matrices
   matrix[L1,p1] B1;
