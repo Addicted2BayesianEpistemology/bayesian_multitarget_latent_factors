@@ -2588,6 +2588,8 @@ def make_prior_dict(hyperparams_dict, B1_dict, B2_dict, y1 = None, y2 = None, X 
     out_dict['p2'] = p2
     out_dict['t1'] = t1
     out_dict['t2'] = t2
+    out_dict['B1'] = B1
+    out_dict['B2'] = B2
     out_dict['r'] = r
     out_dict['y1'] = y1
     out_dict['y2'] = y2
