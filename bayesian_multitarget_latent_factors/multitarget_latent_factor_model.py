@@ -657,12 +657,7 @@ def renaming_convention(xr_datum):
 
 
     
-def compute_BLambaBetaX(B_xr, Λ_xr, β_xr, X_xr,
-                          B_dims = ['target_1_dim_idx','basis_fun_branch_1_idx'],
-                          Λ_dims = ['basis_fun_branch_1_idx','latent_factor_idx'],
-                          β_dims = ['latent_factor_idx','covariate_idx'],
-                          X_dims = ['covariate_idx','sample_idx']
-                          ):
+def compute_BLambaBetaX(B_xr, Λ_xr, β_xr, X_xr, B_dims = ['target_1_dim_idx','basis_fun_branch_1_idx'], Λ_dims = ['basis_fun_branch_1_idx','latent_factor_idx'], β_dims = ['latent_factor_idx','covariate_idx'], X_dims = ['covariate_idx','sample_idx'] ):
     """
     Build a data dictionary for the multitarget latent factor model with customizable parameters.
 
@@ -730,18 +725,7 @@ def compute_BLambaBetaX(B_xr, Λ_xr, β_xr, X_xr,
 
 
 
-def sample_from_posterior(data_dic,
-                        rng_seed,
-                        stan_file_path=None,
-                        output_dir='./out',
-                        laplace_draws = 100,
-                        iter_warmup = 500,
-                        iter_sampling = 1000,
-                        do_prior_sampling = True,
-                        prior_draws = 1000,
-                        max_treedepth = 12,
-                        X_test = None,
-                        ):
+def sample_from_posterior(data_dic, rng_seed, stan_file_path=None, output_dir='./out', laplace_draws = 100, iter_warmup = 500, iter_sampling = 1000, do_prior_sampling = True, prior_draws = 1000, max_treedepth = 12, X_test = None, ):
     """
     Executes the Hamiltonian Monte Carlo (HMC) sampling for the multitarget latent factor model,
     incorporating Laplace approximation for initialization and generating prior and posterior samples.
@@ -1723,9 +1707,6 @@ def compute_likelihood(inference_data, group, samples_y1, samples_y2, samples_X)
 
 
 def compute_likelihood_for_sample(sample_data, samples_y1, samples_y2, samples_X):
-    # Placeholder for the actual likelihood computation
-    # Insert your model-specific likelihood computation here
-
     from scipy.stats import multivariate_normal
     from scipy.stats import Covariance
 
