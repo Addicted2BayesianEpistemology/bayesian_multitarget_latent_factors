@@ -506,3 +506,90 @@ def plot_3_subplots_uncertainty(xy, z_samples, percentiles=(5, 95), ax=None, gri
 
 
 
+
+def convert_chain_draw_to_sample(xr_datarray):
+    """
+    Takes an xarray.DataArray as input where two indexes are 'chain' and 'draw', and returns it with 'sample'
+    """
+    return(xr_datarray.stack(sample=('chain','draw')))
+
+
+
+
+
+
+def uncertain_lineplot(x, y, pi = 90, ax = None, color = '#5b8e7d'):
+    """
+    Plots a line graph with uncertainty intervals based on percentiles.
+
+    The function creates a line plot using seaborn, where the central line represents
+    the median of the data points, and the shaded area around it represents the uncertainty
+    interval defined by the specified percentile.
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        A 1-dimensional numpy array representing the x-axis values of the plot. It should
+        have a shape of (n_points,).
+    y : numpy.ndarray
+        A 2-dimensional numpy array representing multiple samples for y-axis values corresponding
+        to each x-axis point. It should have a shape of (n_sample, n_points), where `n_sample`
+        is the number of samples for each point on the x-axis.
+    pi : int, optional
+        The percentile to use for calculating the uncertainty interval around the median line.
+        The default is 90, which means the plot will display the 5th to 95th percentile range
+        as the uncertainty area.
+    ax : matplotlib.axes.Axes, optional
+        The axes upon which to plot the lineplot. If None (default), the current axes will be used.
+    color : str, optional
+        The color to use for the line and uncertainty area in the plot. The default is '#5b8e7d'.
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+        The axes object with the plot drawn onto it.
+
+    Raises
+    ------
+    ValueError
+        If `x` or `y` do not match the expected dimensions or if `pi` is not between 0 and 100.
+
+    Examples
+    --------
+    >>> x = np.arange(10)
+    >>> y = np.random.rand(100, 10)
+    >>> uncertain_lineplot(x, y)
+
+    """
+
+    from pandas import DataFrame
+    from seaborn import lineplot
+
+    # Validation checks
+    if not isinstance(x, np.ndarray) or x.ndim != 1:
+        raise ValueError("x must be a 1-dimensional numpy array.")
+    if not isinstance(y, np.ndarray) or y.ndim != 2 or y.shape[1] != x.size:
+        raise ValueError("y must be a 2-dimensional numpy array with the same number of points as x in its second dimension.")
+    if not (0 <= pi <= 100):
+        raise ValueError("pi must be between 0 and 100, inclusive.")
+
+    if ax is None:
+        ax = plt.gca()
+
+    return(
+        lineplot(
+            DataFrame(
+                y,
+                columns=x
+            ).melt(),
+            x='variable',
+            y='value',
+            errorbar=('pi',pi),
+            ax=ax,
+            c=color
+        )
+    )
+
+
+
+

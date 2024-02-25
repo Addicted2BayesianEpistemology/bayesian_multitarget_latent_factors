@@ -32,7 +32,7 @@ from .dataset_generator_toolbox import plot_basis_column, plot_basis_all, make_b
 
 ############################## Plotting toolbox ##############################################
 
-from .plotting_tools import plot_unstructured_heatmap, plot_3d_with_computed_percentiles, plot_3d_with_computed_error_bars, animate_3d_rotation_uncertainty, plot_3_subplots_uncertainty
+from .plotting_tools import plot_unstructured_heatmap, plot_3d_with_computed_percentiles, plot_3d_with_computed_error_bars, animate_3d_rotation_uncertainty, plot_3_subplots_uncertainty, convert_chain_draw_to_sample, uncertain_lineplot
 
 
 
