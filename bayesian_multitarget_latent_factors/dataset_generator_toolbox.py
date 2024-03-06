@@ -1856,7 +1856,7 @@ def _add_optional_terms_to_basis_unstructured(evaluation_coords, B, add_optional
     if add_optional_terms in ['linear', 'bilinear']:
         # For 1D, add a column that linearly increases across the domain range
         if dimensionality == 1:
-            linear_column = np.linspace(domain_range[0], domain_range[1], B.shape[0]).reshape(-1, 1)
+            linear_column = evaluation_coords.copy().reshape(-1, 1)
             linear_column = linear_column - 0.5*(domain_range[0] + domain_range[1])
             linear_column = np.sqrt(12)*linear_column/np.power(domain_range[1] - domain_range[0], 1.5)
             B = np.hstack((B, linear_column))
