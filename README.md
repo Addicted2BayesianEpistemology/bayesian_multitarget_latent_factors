@@ -4,6 +4,22 @@
 ## Introduction
 The Bayesian Multitarget Latent Factors package provides a robust solution for multivariate data analysis through Bayesian statistical methods. By leveraging latent factor models, this package aims to uncover hidden structures within datasets that involve multiple targets or outcomes. It is particularly suited for applications where the relationships between variables are complex and intertwined, allowing for a deeper understanding of the underlying factors that drive observable patterns.
 
+## Installation
+### Prerequisites
+- CmdStanPy and Stan installation for Bayesian inference
+
+### Steps
+1. Ensure you have a Python environment ready. If not, create a virtual environment:
+```bash
+python -m venv myenv
+source myenv/bin/activate  # On Windows, use `myenv\Scripts\activate`
+```
+2. Install the package via pip:
+```bash
+pip install bayesian-multitarget-latent-factors
+```
+3. Follow the instructions to install CmdStanPy and Stan as described [here](https://mc-stan.org/cmdstanpy/installation.html#function-install-cmdstan).
+
 ## Features
 
 ### Latent Factor Modeling
@@ -40,22 +56,6 @@ Beyond standard modeling and analysis tools, the package offers sophisticated me
 
 ### True Latent Structure Comparison
 For studies involving simulated data where the true latent structure is known, the package provides tools to adjust the true latent factors according to the orientation and scaling obtained from the Varimax rotation. This feature allows for a direct comparison between the true latent structure and the structure inferred by the model, offering a powerful method for validating the model's accuracy and for understanding how well the model captures the underlying processes generating the data.
-
-## Installation
-### Prerequisites
-- CmdStanPy and Stan installation for Bayesian inference
-
-### Steps
-1. Ensure you have a Python environment ready. If not, create a virtual environment:
-```bash
-python -m venv myenv
-source myenv/bin/activate  # On Windows, use `myenv\Scripts\activate`
-```
-2. Install the package via pip:
-```bash
-pip install bayesian-multitarget-latent-factors
-```
-3. Follow the instructions to install CmdStanPy and Stan as described [here](https://mc-stan.org/cmdstanpy/installation.html#function-install-cmdstan).
 
 ## Usage
 This package is designed for researchers and data scientists who aim to analyze multivariate datasets through Bayesian latent factor models. Example notebooks are provided in the `examples` directory to demonstrate how to apply these models to real-world datasets, including how to visualize results and interpret latent factors.
