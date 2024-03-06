@@ -46,7 +46,9 @@ The Bayesian Multitarget Latent Factors package extends its functionality to enc
 
 - **Unconditional Posterior Predictive Distribution**: This feature allows users to generate predictions from the model without conditioning on new data. It is particularly useful for assessing the model's general behavior and for simulating outcomes based on the distributions learned from the training data. By examining these predictions, users can gain insights into the variability and uncertainty inherent in the model's estimates.
 
-- **Conditional Posterior Predictive Distribution**: In contrast, the conditional posterior predictive functionality enables the projection of new, unseen data into the latent space defined by the model. This approach is invaluable for making predictions about new observations and for evaluating the model's performance on test data. It considers the observed values of new data points to refine these projections, thereby offering a more accurate and tailored predictive performance.
+- **Conditional Posterior Predictive Distribution**: This feature allows users to generate predictions for one target given the other. Useful for function-on-function regression problems like the motivating example that led to the development of this package.
+
+- **Projection on the Latent Space**: In contrast, the projection on the Latent Space posterior predictive functionality enables the projection of new, unseen data into the latent space defined by the model. This approach is invaluable for making predictions about new observations once a meaning has been associated to each latent factor. It considers the observed values of new data points to refine these projections, thereby offering a more accurate and tailored predictive performance.
 
 ### Advanced Data Projection and Interpretation
 Beyond standard modeling and analysis tools, the package offers sophisticated methods for projecting training and test samples onto the varimax-rotated space of posterior latent factors. This capability is essential for:
