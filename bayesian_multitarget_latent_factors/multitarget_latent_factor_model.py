@@ -952,6 +952,271 @@ def sample_from_posterior(data_dic, rng_seed, stan_file_path=None, output_dir='.
     return(idata)
 
 
+def sample_from_posterior_moore_penrose_trick(data_dic, rng_seed, stan_file_path=None, output_dir='./out', laplace_draws = 100, iter_warmup = 500, iter_sampling = 1000, do_prior_sampling = True, prior_draws = 1000, max_treedepth = 12, X_test = None, ):
+    """
+    Executes the Hamiltonian Monte Carlo (HMC) sampling for the multitarget latent factor model,
+    incorporating Laplace approximation for initialization and generating prior and posterior samples.
+    If a test set is provided, it will also compute the predictive prior and posterior
+    samples for that test set.
+    The function organizes output directories, prepares initial conditions, and
+    conducts HMC sampling using a specified Stan model.
+
+    Parameters
+    ----------
+    data_dic : dict
+        A dictionary containing all the data and hyperparameters required for the model.
+        
+    rng_seed : int
+        Seed for the random number generator to ensure reproducibility.
+        
+    stan_file : str, optional
+        Path to the Stan model file.
+        
+    output_dir : str, optional
+        Base directory to store output files. Defaults to './out'.
+        
+    laplace_draws : int, optional
+        Number of draws to sample using Laplace approximation. Defaults to 100.
+        
+    iter_warmup : int, optional
+        Number of warmup iterations for HMC. Defaults to 500.
+        
+    iter_sampling : int, optional
+        Number of sampling iterations for HMC. Defaults to 1000.
+
+    do_prior_sampling : bool, optional
+        Whether to also sample from the prior distribution    
+            
+    prior_draws : int, optional
+        Number of draws to sample from the prior. Defaults to 1000.
+        ignored if do_prior_sampling is False
+        
+    max_treedepth : int, optional
+        XD. Defaults to 12.
+        
+    X_test : np.ndarray, optional
+        A 2D numpy array of test set covariates. If provided, the function will also generate prior and posterior samples for this test set.
+
+    Returns
+    -------
+    arviz.InferenceData
+        An ArviZ InferenceData object containing the results of the HMC sampling, prior samples, and, if X_test is provided, predictions for the test set.
+
+    Notes
+    -----
+    The function performs several steps:
+    1. Preparation of output directories.
+    2. Laplace approximation to find mode of the posterior and to sample around it.
+    3. Initialization of HMC sampler based on Laplace samples.
+    4. Execution of HMC sampling.
+    5. Sampling from the prior using the `sample_from_prior` function.
+    6. If X_test compute the predictives for that set.
+    7. Assembly and return of all sampling results in an ArviZ InferenceData object.
+    
+    As a side effect, this function will alter the directory passed through output_dir, creating one if it's missing.
+
+    References
+    ----------
+    Mention any references to the theoretical background, Stan documentation, or relevant literature.
+
+    See Also
+    --------
+    sample_from_prior: For sampling from the prior.
+    sample_from_posterior_predictive: For generating posterior predictive samples.
+    """
+
+    from os import mkdir
+    from shutil import rmtree
+    from scipy.linalg import pinv
+    from scipy.linalg import qr
+
+    # Organize the directory to save the results
+    try:
+        rmtree(output_dir)
+    except Exception as e:
+        print('While deleting output_dir')
+        print(e)
+        pass
+
+    try:
+        mkdir(output_dir)
+    except Exception as e:
+        print('While creating output_dir')
+        print(e)
+        pass
+
+    try:
+        mkdir(output_dir + '/MAP_Laplace_outDir')
+    except Exception as e:
+        print('While creating the output directory for the Laplace Sampler')
+        print(e)
+        pass
+
+    if stan_file_path == None:
+        stan_file = pkg_resources.resource_filename(__name__, 'model_moore_penrose_trick.stan')
+    else:
+        stan_file = stan_file_path
+
+    # Initialize random number generator
+    rng = np.random.default_rng(rng_seed)
+
+    data_dic2 = data_dic.copy()
+
+
+    B1pinv = pinv(data_dic['B1'])
+    B2pinv = pinv(data_dic['B2'])
+
+    M1 = np.eye(data_dic['L1']) - (data_dic['B1']@B1pinv)
+    M2 = np.eye(data_dic['L2']) - (data_dic['B2']@B2pinv)
+
+    ress_y1 = M1@data_dic['y1']
+    ress_y1 = np.square(ress_y1).sum(axis=0)
+    ress_y2 = M2@data_dic['y2']
+    ress_y2 = np.square(ress_y2).sum(axis=0)
+
+    data_dic2['ress_y1'] = np.sqrt(ress_y1);
+    data_dic2['ress_y2'] = np.sqrt(ress_y2);
+
+    data_dic2['proj_y1'] = B1pinv@data_dic['y1']
+    data_dic2['proj_y2'] = B2pinv@data_dic['y2']
+    data_dic2['proj_y1'] = data_dic2['proj_y1']
+    data_dic2['proj_y2'] = data_dic2['proj_y2']
+
+    #data_dic2['precision_B1'] = data_dic['B1'].T@data_dic['B1']
+    #data_dic2['precision_B2'] = data_dic['B2'].T@data_dic['B2']
+
+    _, R = qr( data_dic['B1'], mode='economic', check_finite=False,  )
+    data_dic2['qr_decompose_R1'] = R
+    _, R = qr( data_dic['B2'], mode='economic', check_finite=False,  )
+    data_dic2['qr_decompose_R2'] = R
+
+
+    if np.linalg.matrix_rank(data_dic['B1']) != data_dic['p1']:
+        print("Warning: B1 doesn't have full column rank!")
+    if np.linalg.matrix_rank(data_dic['B2']) != data_dic['p2']:
+        print("Warning: B2 doesn't have full column rank!")
+
+    # Laplace Sample about the mode
+    idata_MAP = \
+    MAP_and_LaplaceSample(
+        data_dic2,
+        rng.integers(1000000),
+        stan_file=stan_file,
+        output_dir= (output_dir + '/MAP_Laplace_outDir'),
+        lista_observed=['y1','y2'],
+        lista_lklhood=['y'],
+        lista_predictive=['y1','y2'],
+        laplace_draws=laplace_draws,
+    )
+
+    # Use the Laplace Samples to build the initial conditions of the Hamiltonian Monte Carlo Sampler
+    aux_dict = idata_MAP['Laplace_inference_data'].posterior.to_dict()    
+    inits_dict = []
+    for i in range(4):
+        init_dict = {}
+        for key in ['theta1', 'theta2', 'Lambda1', 'Lambda2', 'eta', 'beta', 'tau_theta1', 'tau_theta2', 'delta1', 'delta2', 'psi1', 'psi2']:
+            if key in ['psi1', 'psi2']:
+                init_dict[key] = idata_MAP['Laplace_inference_data'].posterior[key][0, i].values
+            elif key in ['delta1','delta2','tau_theta1','tau_theta2']:
+                init_dict[key] = idata_MAP['Laplace_inference_data'].posterior[key][0, i, :].values
+            else:
+                init_dict[key] = idata_MAP['Laplace_inference_data'].posterior[key][0, i, :, :].values
+        inits_dict.append(init_dict)
+
+    # Hamiltonian Monte Carlo
+    idata = \
+    _execute_HMC(
+        data_dic2,
+        rng.integers(1000000),
+        stan_file=stan_file,
+        output_dir=(output_dir + '/HMC_outDir'),
+        iter_warmup=iter_warmup,
+        iter_sampling=iter_sampling,
+        max_treedepth=max_treedepth,
+        inits=inits_dict,
+        lista_observed=['y1','y2'],
+        lista_lklhood=['y'],
+        lista_predictive=['y1','y2']
+    )
+
+    # Sampling from the Prior
+    if do_prior_sampling:
+        if X_test is not None:
+            prior_samples_xr = sample_from_prior(
+                data_dic,
+                X_test,
+                rng.integers(1000000),
+                prior_draws
+            )
+        else:
+            prior_samples_xr = sample_from_prior(
+                data_dic,
+                rng.normal(size=(data_dic['r'], 2)),
+                rng.integers(1000000),
+                prior_draws
+            )
+
+    # Add the prior samples inside the inference data object and fix some naming of variables
+    idata2 = \
+    idata.rename(
+        name_dict={
+            'y1_predictive':'y1',
+            'y2_predictive':'y2',        
+        },
+        groups='posterior_predictive'
+    ).rename(
+        name_dict={
+            'y': 'y_posterior'
+        },
+        groups='log_likelihood'
+    )
+
+    if do_prior_sampling:
+        idata2.add_groups(
+            {'prior': prior_samples_xr.drop(['log_lik_y', 'y1_predictive', 'y2_predictive', 'y1_test_predictive', 'y2_test_predictive'])}
+        )
+        idata2.add_groups(
+            {'prior_predictive': prior_samples_xr[['y1_predictive','y2_predictive']]}
+        )
+        idata = idata2.assign(y_prior=prior_samples_xr['log_lik_y'].rename({'log_lik_y_dim_0':'y_dim_0'}), groups='log_likelihood')
+    else:
+        idata = idata2.copy()
+
+    if X_test is not None:
+        if do_prior_sampling:
+            # Add the prior predictions on X_test
+            idata.add_groups(
+                {'predictions': prior_samples_xr[['y1_test_predictive','y2_test_predictive']].rename({'y1_test_predictive':'y1_test_prior_predictive', 'y2_test_predictive':'y2_test_prior_predictive'})}
+            )
+
+        idata.add_groups(
+            {
+                'predictions_constant_data': xr.Dataset(
+                    {
+                        'N': X_test.shape[1],
+                        'X': (('X_dim_0','X_dim_1'), X_test)
+                    }
+                )
+            }
+        )
+        aux_xr = sample_from_posterior_predictive(rng.integers(1000000), idata, X_test)
+        if do_prior_sampling:
+            idata = idata.assign(
+                y1_test_posterior_predictive = aux_xr['y1_posterior_predictive'],
+                y2_test_posterior_predictive = aux_xr['y2_posterior_predictive'],
+                groups = 'predictions'
+            )
+        else:
+            idata.add_groups(
+                {
+                    'predictions': aux_xr[['y1_posterior_predictive','y2_posterior_predictive']].rename({'y1_posterior_predictive':'y1_test_posterior_predictive','y2_posterior_predictive':'y2_test_posterior_predictive'})
+                }
+            )
+
+    
+    return(idata)
+
+
     
 def sample_from_posterior_predictive(rng_seed, idata, X_test):
     """
@@ -1823,6 +2088,8 @@ def compute_likelihood_parallel(inference_data, group, samples_y1, samples_y2, s
         likelihoods_xr = xr.DataArray(likelihoods_array, dims=['sample', 'sample_idx'])
     
     return likelihoods_xr
+
+
 
 
 

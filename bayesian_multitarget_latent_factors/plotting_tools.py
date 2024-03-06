@@ -5,11 +5,23 @@ import matplotlib.pyplot as plt
 __all__ = ['plot_unstructured_heatmap',]
 
 
-def plot_unstructured_heatmap(values, locations, method='cubic', grid_res=100, plot_points=False,
-                              ax=None, xlabel=None, ylabel=None, title='Heatmap of Interpolated Values',
-                              colorbar_label='Interpolated Value', show_colorbar=True,
-                              vmin = None, vmax = None,
-                              colormap='viridis', max_distance=None, p_NN_distance_max_distance = np.inf, **kwargs):
+default_color_dict = {"Tyrian purple":"5f0f40","Carmine":"9a031e",
+                      "UT orange":"fb8b24","Spanish orange":"e36414",
+                      "Midnight green":"0f4c5c","Olivine":"8cb369",
+                      "Flax":"f4e285","Sandy brown":"f4a259",
+                      "Viridian":"5b8e7d","Bittersweet shimmer":"bc4b51"}
+
+default_color_dict = \
+{
+    key: '#'+default_color_dict[key]
+    for key in default_color_dict
+}
+
+
+
+
+
+def plot_unstructured_heatmap(values, locations, method='cubic', grid_res=100, plot_points=False, ax=None, xlabel=None, ylabel=None, title='Heatmap of Interpolated Values', colorbar_label='Interpolated Value', show_colorbar=True, vmin = None, vmax = None, colormap='viridis', max_distance=None, p_NN_distance_max_distance = np.inf, use_contour = False, **kwargs):
     """
     Generates a heatmap by interpolating the given values at specified locations, using a specified interpolation method. The heatmap is plotted on a grid with a resolution determined by `grid_res`. This function can also optionally plot the original data points on the heatmap.
 
@@ -51,6 +63,8 @@ def plot_unstructured_heatmap(values, locations, method='cubic', grid_res=100, p
     p_NN_distance_max_distance : float, optional
         The power parameter for the nearest neighbor distance calculation when `max_distance` is specified. Defaults to infinity,
         indicating standard Euclidean distance.
+    use_contour : bool, optional
+        If True, uses plt.contourf to plot the heatmap instead of plt.imshow. Defaults to False.
 
     Returns
     -------
@@ -132,8 +146,11 @@ def plot_unstructured_heatmap(values, locations, method='cubic', grid_res=100, p
     if ax is None:
         ax = plt.gca()
 
-    img = ax.imshow(grid_z.T, extent=(min(locations[:, 0]), max(locations[:, 0]), min(locations[:, 1]), max(locations[:, 1])),
-                    origin='lower', aspect='auto', cmap=colormap, vmin=vmin, vmax=vmax, **kwargs)
+    if use_contour:
+        img = ax.contourf(grid_x, grid_y, grid_z, levels=np.linspace(vmin, vmax, 10), cmap=colormap, linestyles='solid', **kwargs)
+    else:
+        img = ax.imshow(grid_z.T, extent=(min(locations[:, 0]), max(locations[:, 0]), min(locations[:, 1]), max(locations[:, 1])), origin='lower', aspect='auto', cmap=colormap, vmin=vmin, vmax=vmax, **kwargs)
+
     cbar = None
     if show_colorbar:
         cbar = plt.colorbar(img, ax=ax, label=colorbar_label)
@@ -176,7 +193,7 @@ def plot_3d_with_computed_percentiles(xy, z_samples, percentiles=(5, 95), ax=Non
 
     Returns
     -------
-        None
+        fig, ax
 
     Examples
     --------
@@ -225,6 +242,8 @@ def plot_3d_with_computed_percentiles(xy, z_samples, percentiles=(5, 95), ax=Non
     ax.set_zlabel('Z')
 
     ax.view_init(azim=azimuth_angle)
+
+    return fig, ax
     
 
 
@@ -264,7 +283,7 @@ def plot_3d_with_computed_error_bars(xy, z_samples, percentiles=(5, 95), ax=None
 
     Returns
     -------
-    None
+        fig, ax
 
     Examples
     --------
@@ -319,6 +338,8 @@ def plot_3d_with_computed_error_bars(xy, z_samples, percentiles=(5, 95), ax=None
     ax.set_zlabel('Z')
 
     ax.view_init(azim=azimuth_angle)
+
+    return fig, ax
 
 
 def animate_3d_rotation_uncertainty(xy, z_samples, percentiles=(5, 95), grid_res=100, step=1, filename='rotation.gif', error_bars = True, rotation_steps = 72, rot_interval=100):
@@ -480,7 +501,7 @@ def plot_3_subplots_uncertainty(xy, z_samples, percentiles=(5, 95), ax=None, gri
 
     plot_unstructured_heatmap(z_upper , xy, ax=subaxs[0], show_colorbar=False, vmin = vmin, vmax = vmax, colormap=colormap, grid_res=grid_res, title='')
     plot_unstructured_heatmap(z_lower , xy, ax=subaxs[1], show_colorbar=False, vmin = vmin, vmax = vmax, colormap=colormap, grid_res=grid_res, title='')
-    plot_unstructured_heatmap(z_significance , xy, ax=subaxs[2], show_colorbar=False, vmin = vmin2, vmax = vmax2, colormap='Reds_r', grid_res=grid_res, title='')
+    plot_unstructured_heatmap(z_significance , xy, ax=subaxs[2], show_colorbar=False, vmin = vmin2, vmax = vmax2, colormap='Reds_r', grid_res=grid_res, title='', use_contour=True)
     
     sharex = True
     sharey = True
@@ -593,3 +614,557 @@ def uncertain_lineplot(x, y, pi = 90, ax = None, color = '#5b8e7d'):
 
 
 
+def plot_Y_training(idata, sample_idx = 0, ax_1 = None, ax_2 = None, ax_heatmap_1 = None, ax_heatmap_2 = None, required = "predictive", conditional = False, plotting_3d_choice_candle = False, plotting_3d_choice_heatmap = False, scatter = True, scatter_color = '#bc4b51', band_color_lineplot = '#5b8e7d', rng_seed = 123):
+    """
+    Plots the training data along with predictive distributions for a multitarget latent factor model. This function
+    allows for the visualization of the observed data against the predictive distributions, supporting both 2D and 3D
+    plots based on the dimensionality of the observation locations.
+
+    Parameters
+    ----------
+    idata : az.InferenceData
+        An ArviZ InferenceData structure containing the observed data, constant data, and posterior distributions.
+    sample_idx : int, optional
+        Index of the sample to plot, by default 0.
+    ax_1 : matplotlib.axes.Axes or None or bool, optional
+        Axes object for plotting the first target variable. If None, a new figure is created. If False do not plot target 1.
+    ax_2 : matplotlib.axes.Axes or None or bool, optional
+        Axes object for plotting the second target variable. Similar to `ax_1`. If False do not plot target 2.
+    required : str, optional
+        Specifies the type of predictive distribution to plot ('predictive', 'predictive idiosyncratic', 'predictive estimate').
+    conditional : bool, optional
+        Determines whether to sample from the conditional or unconditional predictive distribution, by default False.
+    plotting_3d_choice_candle : bool, optional
+        If True, plots candlestick charts in 3D; otherwise, plots a band in 3D, by default False.
+    plotting_3d_choice_heatmap : bool, optional
+        If True plots 3D using many heatmaps.
+    scatter : bool, optional
+        If True, includes scatter plots of the observed data, by default True.
+    scatter_color : str, optional
+        Color for the scatter plot points, by default '#bc4b51'.
+    band_color_lineplot : str, optional
+        Color for the band or line plot, by default '#5b8e7d'.
+    rng_seed : int, optional
+        Seed for the random number generator to ensure reproducible results, by default 123.
+
+    Raises
+    ------
+    ValueError
+        If `required` is not one of the allowed values.
+        If `conditional` is not a boolean.
+        If `ax_1` and `ax_2` have incompatible types or values.
+        If the dimensionality of observation locations is not supported.
+
+    Notes
+    -----
+    This function integrates closely with the modeling framework, assuming specific structure and naming conventions
+    in the `idata` object. It supports flexibility in plotting configurations and can visualize both 2D and 3D data,
+    contingent on the dimensionality of the observation locations.
+
+    See Also
+    --------
+    sample_conditional_predictive, sample_unconditional_predictive : Functions for sampling predictive distributions.
+    uncertain_lineplot : Function used for lineplot error bars.
+    plot_3d_with_computed_error_bars, plot_3d_with_computed_percentiles : Functions for plotting in 3D.
+    """
+    import matplotlib as mpl
+    import arviz as az
+    from .multitarget_latent_factor_model import renaming_convention, sample_unconditional_predictive, sample_conditional_predictive
+    rng = np.random.default_rng(rng_seed)
+
+    if required not in ['predictive', 'predictive idiosyncratic', 'predictive estimate']:
+        raise ValueError("required must be one of 'predictive', 'predictive idiosyncratic', 'predictive estimate'.")
+
+    if not isinstance(conditional, bool):
+        raise ValueError("conditional must be a boolean.")
+
+    if not isinstance(idata, az.InferenceData):
+        raise ValueError("idata must be an arviz.InferenceData instance.")
+
+    if not isinstance(sample_idx, int):
+        raise ValueError("sample_idx must be an integer.")
+
+    if not isinstance(plotting_3d_choice_candle, bool):
+        raise ValueError("plotting_3d_choice_candle must be a boolean.")
+
+    if not isinstance(plotting_3d_choice_heatmap, bool):
+        raise ValueError("plotting_3d_choice_heatmap must be a boolean.")
+
+    if plotting_3d_choice_candle and plotting_3d_choice_heatmap:
+        raise ValueError("candle and heatmap cannot be both True.")
+
+    if not isinstance(scatter, bool):
+        raise ValueError("scatter must be a boolean.")
+
+    if not ax_heatmap_1 is None and not isinstance(ax_heatmap_1, mpl.axes._axes.Axes):
+        raise ValueError("ax_heatmap_1 must either be None or an Axes")
+    if not ax_heatmap_2 is None and not isinstance(ax_heatmap_2, mpl.axes._axes.Axes):
+        raise ValueError("ax_heatmap_2 must either be None or an Axes")
+
+
+    L1 = int( idata.constant_data['L1'] )
+    t1 = idata.constant_data['t1'].values
+    if t1.shape == (L1,):
+        dimensionality1 = 1
+    elif t1.shape == (L1,2):
+        dimensionality1 = 2
+    else:
+        raise ValueError("'t1' is not of shape (L1,) or (L1,2).")
+
+    L2 = int( idata.constant_data['L2'] )
+    t2 = idata.constant_data['t2'].values
+    if t2.shape == (L2,):
+        dimensionality2 = 1
+    elif t2.shape == (L2,2):
+        dimensionality2 = 2
+    else:
+        raise ValueError("'t2' is not of shape (L2,) or (L2,2).")
+
+
+    plot_1 = True
+    plot_2 = True
+
+    if plotting_3d_choice_heatmap:
+        if dimensionality1 == 2:
+            if ax_1 is None or ax_heatmap_1 is None:
+                raise ValueError("For heatmap plots automatic figure creation is not supported.")
+            if ax_1 == False:
+                plot_1 = False
+        if dimensionality2 == 2:
+            if ax_2 is None or ax_heatmap_2 is None:
+                raise ValueError("For heatmap plots automatic figure creation is not supported.")
+            if ax_2 == False:
+                plot_2 = False
+
+    if ax_1 is None and ax_2 is None:
+        fig, axs = plt.subplots(1,2,figsize=(15,5))
+        ax_1 = axs[0]
+        ax_2 = axs[1]
+    elif ax_1 is None and ax_2 == False:
+        fig, ax_1 = plt.subplots(1,1, figsize=(7,7))
+        plot_2 = False
+    elif ax_1 == False and ax_2 is None:
+        fig, ax_1 = plt.subplots(1,1, figsize=(7,7))
+        plot_1 = False
+    elif isinstance(ax_1, mpl.axes._axes.Axes) and isinstance(ax_2, mpl.axes._axes.Axes):
+        pass
+    elif isinstance(ax_1, mpl.axes._axes.Axes) and ax_2 == False:
+        plot_2 = False
+    elif ax_1 == False and isinstance(ax_2, mpl.axes._axes.Axes):
+        plot_1 = False
+    else:
+        raise ValueError("ax_1 and ax_2 should either be both None, both Axes, or boolean and Axes, or boolean and None")
+
+
+
+    y1 = renaming_convention( idata.observed_data['y1'] ).sel(sample_idx = sample_idx).values
+    y2 = renaming_convention( idata.observed_data['y2'] ).sel(sample_idx = sample_idx).values
+
+    X = renaming_convention( idata.constant_data['X'] ).sel(sample_idx = sample_idx).values
+
+    if conditional:
+        if plot_1:
+            y1_predictive = \
+            sample_conditional_predictive(
+                idata,
+                idata.constant_data['X'].values[:,sample_idx][:,np.newaxis],
+                rng.integers(1000000),
+                bootstrap=1000,
+                Y2_test = idata.observed_data['y2'].values[:,sample_idx][:,np.newaxis],
+                required=required
+            ).values[:,:,0].T
+        if plot_2:
+            y2_predictive = \
+            sample_conditional_predictive(
+                idata,
+                idata.constant_data['X'].values[:,sample_idx][:,np.newaxis],
+                rng.integers(1000000),
+                bootstrap=1000,
+                Y1_test = idata.observed_data['y1'].values[:,sample_idx][:,np.newaxis],
+                required=required
+            ).values[:,:,0].T
+    else:
+        xr_unconditional = \
+        sample_unconditional_predictive(
+            idata,
+            idata.constant_data['X'].values[:,sample_idx][:,np.newaxis],
+            rng.integers(1000000),
+            bootstrap=1000,
+            required = required
+            )
+        y1_predictive = xr_unconditional['Y1'].values[:,:,0].T
+        y2_predictive = xr_unconditional['Y2'].values[:,:,0].T
+
+    if plot_1:
+        ax = ax_1
+        if dimensionality1 == 1:
+            # 2D Line plot for target 1
+            uncertain_lineplot(t1, y1_predictive.T, pi=90, ax=ax, color=band_color_lineplot)
+        elif dimensionality1 == 2 and not plotting_3d_choice_candle and not plotting_3d_choice_heatmap:
+            # 3D Plot with computed percentiles for target 1
+            _, ax3d = plot_3d_with_computed_percentiles(t1, y1_predictive, percentiles=(5, 95), ax=ax)
+        elif dimensionality1 == 2 and plotting_3d_choice_candle and not plotting_3d_choice_heatmap:
+            # 3D Plot with computed error bars for target 1
+            _, ax3d = plot_3d_with_computed_error_bars(t1, y1_predictive, percentiles=(5, 95), ax=ax)
+        elif dimensionality1 == 2 and plotting_3d_choice_heatmap:
+            vmin, vmax = plot_3_subplots_uncertainty( t1, y1_predictive, ax=ax_heatmap_1)
+            plot_unstructured_heatmap(y1_predictive.mean(axis=1), t1, ax=ax, colormap='coolwarm')
+
+
+        # Scatter plot of observed data
+        if scatter:
+            if dimensionality1 == 1:
+                ax.scatter(t1, y1, color=scatter_color)
+            elif dimensionality1 == 2 and not plotting_3d_choice_heatmap:
+                ax3d.scatter( t1[:,0], t1[:,1], y1, color=scatter_color )
+            elif dimensionality1 == 2 and plotting_3d_choice_heatmap:
+                ax.scatter( t1[:,0], t1[:,1], c=y1, cmap='coolwarm', edgecolors='black' )
+
+    if plot_2:
+        ax = ax_2
+        if dimensionality2 == 1:
+            # 2D Line plot for target 2
+            uncertain_lineplot(t2, y2_predictive.T, pi=90, ax=ax, color=band_color_lineplot)
+        elif dimensionality2 == 2 and not plotting_3d_choice_candle and not plotting_3d_choice_heatmap:
+            # 3D Plot with computed percentiles for target 2
+            _, ax3d = plot_3d_with_computed_percentiles(t2, y2_predictive, percentiles=(5, 95), ax=ax)
+        elif dimensionality2 == 2 and plotting_3d_choice_candle and not plotting_3d_choice_heatmap:
+            # 3D Plot with computed error bars for target 2
+            _, ax3d = plot_3d_with_computed_error_bars(t2, y2_predictive, percentiles=(5, 95), ax=ax)
+        elif dimensionality2 == 2 and plotting_3d_choice_heatmap:
+            vmin, vmax = plot_3_subplots_uncertainty( t2, y2_predictive, ax=ax_heatmap_2)
+            plot_unstructured_heatmap(y2_predictive.mean(axis=1), t2, ax=ax, colormap='coolwarm')
+
+        # Scatter plot of observed data
+        if scatter:
+            if dimensionality2 == 1:
+                ax.scatter(t2, y2, color=scatter_color)
+            elif dimensionality2 == 2 and not plotting_3d_choice_heatmap:
+                ax3d.scatter( t2[:,0], t2[:,1], y2, color=scatter_color )
+            elif dimensionality2 == 2 and plotting_3d_choice_heatmap:
+                ax.scatter( t2[:,0], t2[:,1], c=y2, cmap='coolwarm', edgecolors='black' )
+
+
+
+
+def plot_Y_testing(idata, test_set_dic, sample_idx = 0, ax_1 = None, ax_2 = None, ax_heatmap_1 = None, ax_heatmap_2 = None, required = "predictive", conditional = False, plotting_3d_choice_candle = False, plotting_3d_choice_heatmap = False, scatter = True, scatter_color = '#bc4b51', band_color_lineplot = '#5b8e7d', rng_seed = 123):
+    """
+    Plots the training data along with predictive distributions for a multitarget latent factor model. This function
+    allows for the visualization of the observed data against the predictive distributions, supporting both 2D and 3D
+    plots based on the dimensionality of the observation locations.
+
+    Parameters
+    ----------
+    idata : az.InferenceData
+        An ArviZ InferenceData structure containing the observed data, constant data, and posterior distributions.
+    test_set_dic: 
+        A dictionary containing 'y1','y2' and 'X' for the test set.
+    sample_idx : int, optional
+        Index of the sample to plot, by default 0.
+    ax_1 : matplotlib.axes.Axes or None or bool, optional
+        Axes object for plotting the first target variable. If None, a new figure is created. If False do not plot target 1.
+    ax_2 : matplotlib.axes.Axes or None or bool, optional
+        Axes object for plotting the second target variable. Similar to `ax_1`. If False do not plot target 2.
+    required : str, optional
+        Specifies the type of predictive distribution to plot ('predictive', 'predictive idiosyncratic', 'predictive estimate').
+    conditional : bool, optional
+        Determines whether to sample from the conditional or unconditional predictive distribution, by default False.
+    plotting_3d_choice_candle : bool, optional
+        If True, plots candlestick charts in 3D; otherwise, plots a band in 3D, by default False.
+    plotting_3d_choice_heatmap : bool, optional
+        If True plots 3D using many heatmaps.
+    scatter : bool, optional
+        If True, includes scatter plots of the observed data, by default True.
+    scatter_color : str, optional
+        Color for the scatter plot points, by default '#bc4b51'.
+    band_color_lineplot : str, optional
+        Color for the band or line plot, by default '#5b8e7d'.
+    rng_seed : int, optional
+        Seed for the random number generator to ensure reproducible results, by default 123.
+
+    Raises
+    ------
+    ValueError
+        If `required` is not one of the allowed values.
+        If `conditional` is not a boolean.
+        If `ax_1` and `ax_2` have incompatible types or values.
+        If the dimensionality of observation locations is not supported.
+
+    Notes
+    -----
+    This function integrates closely with the modeling framework, assuming specific structure and naming conventions
+    in the `idata` object. It supports flexibility in plotting configurations and can visualize both 2D and 3D data,
+    contingent on the dimensionality of the observation locations.
+
+    See Also
+    --------
+    sample_conditional_predictive, sample_unconditional_predictive : Functions for sampling predictive distributions.
+    uncertain_lineplot : Function used for lineplot error bars.
+    plot_3d_with_computed_error_bars, plot_3d_with_computed_percentiles : Functions for plotting in 3D.
+    """
+
+    ########################################################################
+    ### TO-DO FIX THE DOCSTRING and the validation checks!!!!!
+    ########################################################################
+
+    import matplotlib as mpl
+    import arviz as az
+    from .multitarget_latent_factor_model import renaming_convention, sample_unconditional_predictive, sample_conditional_predictive
+    rng = np.random.default_rng(rng_seed)
+
+    if required not in ['predictive', 'predictive idiosyncratic', 'predictive estimate']:
+        raise ValueError("required must be one of 'predictive', 'predictive idiosyncratic', 'predictive estimate'.")
+
+    if not isinstance(conditional, bool):
+        raise ValueError("conditional must be a boolean.")
+
+    if not isinstance(idata, az.InferenceData):
+        raise ValueError("idata must be an arviz.InferenceData instance.")
+
+    if not isinstance(sample_idx, int):
+        raise ValueError("sample_idx must be an integer.")
+
+    if not isinstance(plotting_3d_choice_candle, bool):
+        raise ValueError("plotting_3d_choice_candle must be a boolean.")
+
+    if not isinstance(plotting_3d_choice_heatmap, bool):
+        raise ValueError("plotting_3d_choice_heatmap must be a boolean.")
+
+    if plotting_3d_choice_candle and plotting_3d_choice_heatmap:
+        raise ValueError("candle and heatmap cannot be both True.")
+
+    if not isinstance(scatter, bool):
+        raise ValueError("scatter must be a boolean.")
+
+    if not ax_heatmap_1 is None and not isinstance(ax_heatmap_1, mpl.axes._axes.Axes):
+        raise ValueError("ax_heatmap_1 must either be None or an Axes")
+    if not ax_heatmap_2 is None and not isinstance(ax_heatmap_2, mpl.axes._axes.Axes):
+        raise ValueError("ax_heatmap_2 must either be None or an Axes")
+
+
+    L1 = int( idata.constant_data['L1'] )
+    t1 = idata.constant_data['t1'].values
+    if t1.shape == (L1,):
+        dimensionality1 = 1
+    elif t1.shape == (L1,2):
+        dimensionality1 = 2
+    else:
+        raise ValueError("'t1' is not of shape (L1,) or (L1,2).")
+
+    L2 = int( idata.constant_data['L2'] )
+    t2 = idata.constant_data['t2'].values
+    if t2.shape == (L2,):
+        dimensionality2 = 1
+    elif t2.shape == (L2,2):
+        dimensionality2 = 2
+    else:
+        raise ValueError("'t2' is not of shape (L2,) or (L2,2).")
+
+
+    plot_1 = True
+    plot_2 = True
+
+    if plotting_3d_choice_heatmap:
+        if dimensionality1 == 2:
+            if ax_1 is None or ax_heatmap_1 is None:
+                raise ValueError("For heatmap plots automatic figure creation is not supported.")
+            if ax_1 == False:
+                plot_1 = False
+        if dimensionality2 == 2:
+            if ax_2 is None or ax_heatmap_2 is None:
+                raise ValueError("For heatmap plots automatic figure creation is not supported.")
+            if ax_2 == False:
+                plot_2 = False
+
+    if ax_1 is None and ax_2 is None:
+        fig, axs = plt.subplots(1,2,figsize=(15,5))
+        ax_1 = axs[0]
+        ax_2 = axs[1]
+    elif ax_1 is None and ax_2 == False:
+        fig, ax_1 = plt.subplots(1,1, figsize=(7,7))
+        plot_2 = False
+    elif ax_1 == False and ax_2 is None:
+        fig, ax_1 = plt.subplots(1,1, figsize=(7,7))
+        plot_1 = False
+    elif isinstance(ax_1, mpl.axes._axes.Axes) and isinstance(ax_2, mpl.axes._axes.Axes):
+        pass
+    elif isinstance(ax_1, mpl.axes._axes.Axes) and ax_2 == False:
+        plot_2 = False
+    elif ax_1 == False and isinstance(ax_2, mpl.axes._axes.Axes):
+        plot_1 = False
+    else:
+        raise ValueError("ax_1 and ax_2 should either be both None, both Axes, or boolean and Axes, or boolean and None")
+
+
+    y1 = test_set_dic['y1'][:,sample_idx]
+    y2 = test_set_dic['y2'][:,sample_idx]
+    X = test_set_dic['X'][:,sample_idx]
+
+    if conditional:
+        if plot_1:
+            y1_predictive = \
+            sample_conditional_predictive(
+                idata,
+                test_set_dic['X'][:,sample_idx][:,np.newaxis],
+                rng.integers(1000000),
+                bootstrap=1000,
+                Y2_test = test_set_dic['y2'][:,sample_idx][:,np.newaxis],
+                required=required
+            ).values[:,:,0].T
+        if plot_2:
+            y2_predictive = \
+            sample_conditional_predictive(
+                idata,
+                test_set_dic['X'][:,sample_idx][:,np.newaxis],
+                rng.integers(1000000),
+                bootstrap=1000,
+                Y1_test = test_set_dic['y1'][:,sample_idx][:,np.newaxis],
+                required=required
+            ).values[:,:,0].T
+    else:
+        xr_unconditional = \
+        sample_unconditional_predictive(
+            idata,
+            test_set_dic['X'][:,sample_idx][:,np.newaxis],
+            rng.integers(1000000),
+            bootstrap=1000,
+            required = required
+            )
+        y1_predictive = xr_unconditional['Y1'].values[:,:,0].T
+        y2_predictive = xr_unconditional['Y2'].values[:,:,0].T
+
+    if plot_1:
+        ax = ax_1
+        if dimensionality1 == 1:
+            # 2D Line plot for target 1
+            uncertain_lineplot(t1, y1_predictive.T, pi=90, ax=ax, color=band_color_lineplot)
+        elif dimensionality1 == 2 and not plotting_3d_choice_candle and not plotting_3d_choice_heatmap:
+            # 3D Plot with computed percentiles for target 1
+            _, ax3d = plot_3d_with_computed_percentiles(t1, y1_predictive, percentiles=(5, 95), ax=ax)
+        elif dimensionality1 == 2 and plotting_3d_choice_candle and not plotting_3d_choice_heatmap:
+            # 3D Plot with computed error bars for target 1
+            _, ax3d = plot_3d_with_computed_error_bars(t1, y1_predictive, percentiles=(5, 95), ax=ax)
+        elif dimensionality1 == 2 and plotting_3d_choice_heatmap:
+            vmin, vmax = plot_3_subplots_uncertainty( t1, y1_predictive, ax=ax_heatmap_1)
+            plot_unstructured_heatmap(y1_predictive.mean(axis=1), t1, ax=ax, colormap='coolwarm')
+
+
+        # Scatter plot of observed data
+        if scatter:
+            if dimensionality1 == 1:
+                ax.scatter(t1, y1, color=scatter_color)
+            elif dimensionality1 == 2 and not plotting_3d_choice_heatmap:
+                ax3d.scatter( t1[:,0], t1[:,1], y1, color=scatter_color )
+            elif dimensionality1 == 2 and plotting_3d_choice_heatmap:
+                ax.scatter( t1[:,0], t1[:,1], c=y1, cmap='coolwarm', edgecolors='black' )
+
+    if plot_2:
+        ax = ax_2
+        if dimensionality2 == 1:
+            # 2D Line plot for target 2
+            uncertain_lineplot(t2, y2_predictive.T, pi=90, ax=ax, color=band_color_lineplot)
+        elif dimensionality2 == 2 and not plotting_3d_choice_candle and not plotting_3d_choice_heatmap:
+            # 3D Plot with computed percentiles for target 2
+            _, ax3d = plot_3d_with_computed_percentiles(t2, y2_predictive, percentiles=(5, 95), ax=ax)
+        elif dimensionality2 == 2 and plotting_3d_choice_candle and not plotting_3d_choice_heatmap:
+            # 3D Plot with computed error bars for target 2
+            _, ax3d = plot_3d_with_computed_error_bars(t2, y2_predictive, percentiles=(5, 95), ax=ax)
+        elif dimensionality2 == 2 and plotting_3d_choice_heatmap:
+            vmin, vmax = plot_3_subplots_uncertainty( t2, y2_predictive, ax=ax_heatmap_2)
+            plot_unstructured_heatmap(y2_predictive.mean(axis=1), t2, ax=ax, colormap='coolwarm')
+
+        # Scatter plot of observed data
+        if scatter:
+            if dimensionality2 == 1:
+                ax.scatter(t2, y2, color=scatter_color)
+            elif dimensionality2 == 2 and not plotting_3d_choice_heatmap:
+                ax3d.scatter( t2[:,0], t2[:,1], y2, color=scatter_color )
+            elif dimensionality2 == 2 and plotting_3d_choice_heatmap:
+                ax.scatter( t2[:,0], t2[:,1], c=y2, cmap='coolwarm', edgecolors='black' )
+
+
+
+
+
+def plot_with_credibility_intervals(X, Y, ax=None, show_means = False, pi=0.95):
+    """
+    Plots credibility intervals for multiple sets of predictions alongside their actual values. This function is designed to visualize the uncertainty in predictions by plotting the 95% credibility intervals and, optionally, the means of the predictions. 
+
+    Parameters
+    ----------
+    X : numpy.ndarray
+        A 2D array of shape (L, k) representing the actual values of k variables across L instances.
+    Y : numpy.ndarray
+        A 3D array of shape (S, L, k) representing S sets of predictions for k variables across L instances. These predictions are used to calculate the credibility intervals.
+    ax : matplotlib.axes.Axes, optional
+        The axes on which to draw the plot. If None, the current axes will be used.
+    show_means : bool, optional
+        If True, plot the means of the predictions alongside the actual values and credibility intervals. Defaults to False.
+    pi : float, optional
+        Amplitude of the Credibility Intervals. Defaults to 0.95.
+
+    Raises
+    ------
+    ValueError
+        If `X` is not a 2D array or if `Y` is not a 3D array.
+        If the shapes of `X` and `Y` are incompatible, i.e., if `X.shape` does not match `(Y.shape[1], Y.shape[2])`.
+
+    Notes
+    -----
+    The function plots the actual values from `X` and the corresponding 95% credibility intervals derived from `Y`. For each variable (column in `X` and last dimension in `Y`), the function plots a series of vertical lines representing the credibility intervals for each instance. If `show_means` is True, it also plots the means of the predictions as scatter points.
+    """
+
+    # Check if X is a 2D array
+    if not isinstance(X, np.ndarray) or X.ndim != 2:
+        raise ValueError("`X` must be a 2D numpy array.")
+
+    # Check if Y is a 3D array
+    if not isinstance(Y, np.ndarray) or Y.ndim != 3:
+        raise ValueError("`Y` must be a 3D numpy array.")
+
+    # Check if the shapes of X and Y are compatible
+    if X.shape[0] != Y.shape[1] or X.shape[1] != Y.shape[2]:
+        raise ValueError("The shape of `X` must match `(Y.shape[1], Y.shape[2])`.")
+
+    upp_bound_percentile_val = pi + (1-pi)/2
+    upp_bound_percentile_val = upp_bound_percentile_val*100
+    low_bound_percentile_val = 100 - upp_bound_percentile_val
+
+    if ax is None:
+        ax = plt.gca()
+    fig = ax.get_figure()
+    
+    # Dimensions based on X and Y
+    L, k = X.shape
+    S = Y.shape[0]
+
+    # Flatten X and prepare x-axis for scatter plot
+    X_flattened = X.flatten()
+    x_indices = np.arange(len(X_flattened))
+
+    # Scatter plot of X flattened
+    rng_aux = np.random.default_rng(123)
+    colors = [default_color_dict[name] for name in list(rng_aux.choice( np.array(list(default_color_dict)) , replace=False, size=len(list(default_color_dict))))]
+    
+    # Compute and plot credibility intervals with line segments
+    n_X_is_within_range = 0
+    for i in range(k):
+        # Calculating the 2.5th and 97.5th percentiles for each column in Y, which are our credibility intervals
+        lower_bound = np.percentile(Y[:,:,i], low_bound_percentile_val, axis=0)
+        upper_bound = np.percentile(Y[:,:,i], upp_bound_percentile_val, axis=0)
+
+        # Plotting the intervals as vertical line segments
+        for j in range(L):
+            if show_means:
+                ax.scatter([j + L*i], [X[j,i]], color='black', label=f'X[:,{i}]')
+                ax.scatter([j + L*i], [Y[:,j,i].mean()], color=colors[i%k], label=f'X[:,{i}]')
+            else:
+                ax.scatter([j + L*i], [X[j,i]], color=colors[i%k], label=f'X[:,{i}]')
+                
+            ax.plot([j + L*i, j + L*i], [lower_bound[j], upper_bound[j]], color=colors[i%k])
+            if lower_bound[j] < X[j,i] and X[j,i] < upper_bound[j]:
+                n_X_is_within_range += 1
+
+    ax.axhline(0, color='black', linestyle='--')
+
+    print('X is within range ' + str(n_X_is_within_range) + ' times out of ' + str(L*k) + '. Which means ' + str(n_X_is_within_range/(L*k)*100) + '% of the time.')

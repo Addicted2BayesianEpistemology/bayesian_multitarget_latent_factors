@@ -305,6 +305,9 @@ def sample_projection_on_varimaxed_space(rng_seed, idata, Varimax_res_xr, X_test
 
     """
 
+    from .multitarget_latent_factor_model import sample_unconditional_predictive
+    from .multitarget_latent_factor_model import sample_conditional_predictive
+
     # Validate rng_seed
     if not isinstance(rng_seed, (int, np.int_)):
         raise ValueError("rng_seed must be an integer.")
@@ -383,9 +386,15 @@ def sample_projection_on_varimaxed_space(rng_seed, idata, Varimax_res_xr, X_test
 
     xr_dataset = deepcopy( idata.posterior )
 
+    #η_estimate = \
+    #xrein.linalg.matmul(
+    #    renaming_convention( xr_dataset['beta'] ),
+    #    xr.DataArray(X_test, dims=['covariate_idx','sample_idx']),
+    #    dims=[['latent_factor_idx','covariate_idx'],['covariate_idx','sample_idx']]
+    #)
     η_estimate = \
     xrein.linalg.matmul(
-        renaming_convention( xr_dataset['beta'] ),
+        Varimax_res_xr['β'],
         xr.DataArray(X_test, dims=['covariate_idx','sample_idx']),
         dims=[['latent_factor_idx','covariate_idx'],['covariate_idx','sample_idx']]
     )
@@ -532,3 +541,164 @@ def sample_projection_on_varimaxed_space(rng_seed, idata, Varimax_res_xr, X_test
     return(
         η_predictive
     )
+
+
+def Varimax_true_lambdas(True_Λ1, True_Λ2, Varimax_res_xr, idata):
+    """
+    Adjusts the true latent factors (`True_Λ1`, `True_Λ2`) to match the orientation and scaling
+    obtained from the Varimax rotation applied to model-estimated latent factors. This function facilitates
+    comparison between the true latent structure of the data and the inferred latent structure after
+    Varimax rotation. It returns the adjusted true latent factors and their projections onto the basis
+    functions, ensuring they are aligned with the Varimax-rotated factors from the model.
+
+    Parameters
+    ----------
+    True_Λ1 : np.ndarray
+        The true latent factors for the first target. This should be a 2D array where rows correspond to basis
+        functions and columns to latent factors.
+    True_Λ2 : np.ndarray
+        The true latent factors for the second target. This should be a 2D array similar to `True_Λ1`.
+    Varimax_res_xr : xr.Dataset
+        The dataset containing the results of the Varimax rotation applied to the latent factors, including
+        the rotation matrix, sign adjustments, and permutation matrix, from the model estimation.
+    idata : az.InferenceData
+        The inference data object resulting from sample_from_posterior.
+
+    Returns
+    -------
+    rot_Lambda1 : np.ndarray
+        The adjusted true latent factors for the first target, aligned with the model's Varimax-rotated factors.
+    rot_Lambda2 : np.ndarray
+        The adjusted true latent factors for the second target, aligned with the model's Varimax-rotated factors.
+    rotB1Λ1 : np.ndarray
+        The projection of the adjusted `rot_Lambda1` onto the basis functions for the first target.
+    rotB2Λ2 : np.ndarray
+        The projection of the adjusted `rot_Lambda2` onto the basis functions for the second target.
+
+    Notes
+    -----
+    This function is useful for evaluating the accuracy of the inferred latent structure by comparing it against
+    the true latent structure (when known, such as in simulated datasets). The Varimax rotation and alignment process
+    ensures that the comparison respects the model's interpretive adjustments (e.g., rotation, scaling, and permutation)
+    applied during analysis.
+
+    See Also
+    --------
+    Varimax_RSP : Function that performs Varimax rotation on the posterior samples of latent factors.
+
+    References
+    ----------
+    Kaiser, H.F. (1958). The varimax criterion for analytic rotation in factor analysis. Psychometrika, 23(3), 187-200.
+    Papastamoulis, Panagiotis, & Ntzoufras, Ioannis. (2022). On the identifiability of Bayesian factor analytic models.
+    Statistics and Computing, 32(2), 23. https://doi.org/10.1007/s11222-022-10084-4
+    """
+
+    if not isinstance(True_Λ1, np.ndarray):
+        raise TypeError("True_Λ1 must be a numpy array.")
+    if not isinstance(True_Λ2, np.ndarray):
+        raise TypeError("True_Λ2 must be a numpy array.")
+    if not isinstance(Varimax_res_xr, xr.Dataset):
+        raise TypeError("Varimax_res_xr must be an xarray Dataset.")
+
+    if True_Λ1.ndim != 2:
+        raise ValueError("True_Λ1 must be a 2D array.")
+    if True_Λ2.ndim != 2:
+        raise ValueError("True_Λ2 must be a 2D array.")
+        
+    expected_latent_factors = Varimax_res_xr['Λ1'].sizes['latent_factor_idx']
+    if True_Λ1.shape[1] != expected_latent_factors or True_Λ2.shape[1] != expected_latent_factors:
+        raise ValueError(f"True_Λ1 and True_Λ2 must have {expected_latent_factors} columns, matching the latent factors in Varimax_res_xr.")
+
+    required_vars = ['Λ1', 'Λ2']
+    missing_vars = [var for var in required_vars if var not in Varimax_res_xr]
+    if missing_vars:
+        raise ValueError(f"Varimax_res_xr is missing the following required variables: {', '.join(missing_vars)}.")
+
+    if idata.constant_data['B1'].shape[1] != True_Λ1.shape[0]:
+        raise ValueError("The shape of B1 in Varimax_res_xr does not match the shape of True_Λ1 for matrix multiplication.")
+    if idata.constant_data['B2'].shape[1] != True_Λ2.shape[0]:
+        raise ValueError("The shape of B2 in Varimax_res_xr does not match the shape of True_Λ2 for matrix multiplication.")
+
+    if not isinstance(idata, az.InferenceData):
+        raise ValueError("idata must be an arviz.InferenceData object.")
+
+
+    from scipy.optimize import linear_sum_assignment
+    from itertools import product
+    
+    def _ortho_rotation(components, method="varimax", tol=1e-6, max_iter=100):
+        """Return rotated components."""
+        nrow, ncol = components.shape
+        rotation_matrix = np.eye(ncol)
+        var = 0
+    
+        for _ in range(max_iter):
+            comp_rot = np.dot(components, rotation_matrix)
+            if method == "varimax":
+                tmp = comp_rot * np.transpose((comp_rot**2).sum(axis=0) / nrow)
+            elif method == "quartimax":
+                tmp = 0
+            u, s, v = np.linalg.svd(np.dot(components.T, comp_rot**3 - tmp))
+            rotation_matrix = np.dot(u, v)
+            var_new = np.sum(s)
+            if var != 0 and var_new < var * (1 + tol):
+                break
+            var = var_new
+    
+        return np.dot(components, rotation_matrix), rotation_matrix
+
+    True_Λ  = \
+    np.concatenate([
+        True_Λ1,
+        True_Λ2
+    ], axis=0)
+
+    Varimax_true_Λ , _ = _ortho_rotation(True_Λ)
+
+    Varimax_RSP_mean_Λ1 = Varimax_res_xr['Λ1'].mean('chain').mean('draw').values
+    Varimax_RSP_mean_Λ2 = Varimax_res_xr['Λ2'].mean('chain').mean('draw').values
+    Varimax_RSP_mean_Λ = \
+    np.concatenate([
+        Varimax_RSP_mean_Λ1,
+        Varimax_RSP_mean_Λ2
+    ], axis=0)
+    
+    p = Varimax_true_Λ.shape[0]
+    q = Varimax_true_Λ.shape[1]
+    all_s = np.array( list(product([-1,1], repeat=q)) )
+
+    v = np.zeros( all_s.shape )
+    cost = np.zeros( all_s.shape[0] )
+    for s_idx in range(all_s.shape[0]):
+        s = all_s[s_idx,:]
+        Λaux = \
+        np.matmul(
+            Varimax_true_Λ[:,:],
+            np.diag(s)
+        )
+        C = np.zeros((q,q))
+        for j in range(q):
+            C[:,j] = np.square( Varimax_RSP_mean_Λ[:,:] - Λaux[:,[j]] ).sum(axis=0)
+        row_idx, col_idx = linear_sum_assignment(C)
+        v[s_idx, row_idx] = col_idx
+        cost[s_idx] = C[row_idx, col_idx].sum()    
+    s_idx_best = np.argmin(cost)
+    best_s = all_s[s_idx_best,:]
+
+    perm = np.int_(v[s_idx_best,:])
+    sign = best_s[perm]
+
+    rot_Lambda_copy = Varimax_true_Λ.copy()
+    rot_Lambda_copy[:,0] = sign[0]*Varimax_true_Λ[:,perm[0]]
+    rot_Lambda_copy[:,1] = sign[1]*Varimax_true_Λ[:,perm[1]]
+    rot_Lambda_copy[:,2] = sign[2]*Varimax_true_Λ[:,perm[2]]
+    rot_Lambda_copy[:,3] = sign[3]*Varimax_true_Λ[:,perm[3]]
+
+    rot_Lambda1 = rot_Lambda_copy[:True_Λ1.shape[0],:]
+    rot_Lambda2 = rot_Lambda_copy[True_Λ1.shape[0]:,:]
+    rotB1Λ1 = idata.constant_data['B1'].values@rot_Lambda1
+    rotB2Λ2 = idata.constant_data['B2'].values@rot_Lambda2    
+    
+    return rot_Lambda1, rot_Lambda2, rotB1Λ1, rotB2Λ2
+
+

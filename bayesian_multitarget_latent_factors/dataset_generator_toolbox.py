@@ -1737,6 +1737,43 @@ def plot_basis_all(basis_type='bspline', dimensionality=1, p=4, n_basis = 10, R=
         raise ValueError("dimensionality must be either 1 or 2")
 
 
+def plot_col_basis_dict(B_dict, col_idx = 0, ax = None):
+
+    from .plotting_tools import plot_unstructured_heatmap
+
+    dimensionality = len(B_dict['t'].shape)
+
+    if ax is None:
+        ax = plt.gca()
+        fig = ax.get_figure()
+        fig.set_figwidth(9)
+        fig.set_figheight(6)
+
+    # Plotting
+    if dimensionality == 1:
+        x = B_dict['t']
+        ax.plot(x, B_dict['B'][:, col_idx], label=f'Column {col_idx}')
+        ax.set_title(f'Plot of Column {col_idx} of Basis Matrix')
+        ax.set_xlabel('X Axis')
+        ax.set_ylabel('Value')
+        ax.legend()
+        return ax
+    elif dimensionality == 2:
+        grid_points = B_dict['t']
+        #aux = np.array(grid_points)
+        #grid_points = np.reshape( aux , (2, np.prod( aux.shape[1:] ))).T
+        ax,img,cbar,vmin,vmax = plot_unstructured_heatmap(
+            B_dict['B'][:, col_idx], grid_points, grid_res=400, colormap = 'coolwarm', ax=ax
+        )
+
+        ax.set_title(f'Heatmap of Column {col_idx} of Basis Matrix')
+        ax.set_xlabel('X Axis')
+        ax.set_ylabel('Y Axis')
+    else:
+        raise ValueError("dimensionality must be either 1 or 2")
+
+
+
 
 def _add_optional_terms_to_basis_unstructured(evaluation_coords, B, add_optional_terms, dimensionality, domain_range):
     """
@@ -2607,3 +2644,529 @@ def make_prior_dict(hyperparams_dict, B1_dict, B2_dict, y1 = None, y2 = None, X 
 
 
 
+def build_matrix_B_from_gaussian_process_covariance(x, l, num_singular_values = None, threshold = 0.999, sigma = 1.0, nugget = 1e-4, period = None, type_cov='exp_quad', use_S = True):
+    """
+    Constructs a basis matrix B that approximates the covariance structure of a Gaussian Process (GP)
+    specified by its covariance function. This is achieved through the use of Singular Value Decomposition (SVD)
+    on the GP's covariance matrix, allowing the extraction of the principal components that capture the 
+    majority of the covariance structure up to a specified threshold.
+
+    This function is particularly useful for dimensionality reduction in GP models, enabling the representation
+    of the GP's covariance in a lower-dimensional space.
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        The input locations at which the GP's covariance structure is evaluated. Can be either a 1D or 2D numpy array.
+    l : float
+        The length scale parameter of the exponential quadratic covariance function. Controls the smoothness of the GP.
+    num_singular_values : int, optional
+        The number of singular values to retain in the construction of the basis matrix B. If not specified, the number
+        is determined based on the `threshold` parameter.
+    threshold : float, optional
+        The cumulative proportion of the total variance that the selected singular values must capture. Used to determine
+        the number of singular values to retain if `num_singular_values` is not specified. Defaults to 0.999.
+    sigma : float, optional
+        The signal variance parameter (also known as the scale or amplitude parameter) of the GP's covariance function.
+        Defaults to 1.0.
+    nugget : float, optional
+        A small value added to the diagonal of the covariance matrix for numerical stability. Defaults to 1e-4.
+    type_cov : str, optional
+        Specifies the type of covariance function to use. Currently, supports:
+            - exp_quad (exponential quadratic)
+            - exponential
+            - exp_sine_squared (periodic kernel)
+            - matern_3_2, matern_5_2 (matern 3/2 and 5/2)
+            - dot_product
+    use_S : bool
+        If True does PCA if False also normalizes the U matrix so that the resulting covariance structure is that of the desired Gaussian Process
+        (Defaults to True)
+
+    Returns
+    -------
+    dict
+        A dictionary containing the following keys and values:
+        - 'L': int, the number of input locations.
+        - 'p': int, the number of singular values (and hence the dimensionality of the basis matrix B).
+        - 'B': numpy.ndarray, the constructed basis matrix of shape (L, p).
+        - 't': numpy.ndarray, a copy of the input locations `x`.
+
+    Raises
+    ------
+    ValueError
+        - If `x` is not a numpy array or if it is not either 1D or 2D.
+        - If `l` (length scale) is not a positive number.
+        - If `sigma` (signal variance) is not a positive number.
+        - If `nugget` is negative, as it must be a non-negative number for numerical stability.
+        - If `threshold` is not between 0 and 1, inclusive, since it represents a proportion of total variance.
+        - If `num_singular_values` is specified but is not a positive integer or exceeds the number of observations in `x`.
+        - If `type_cov` is not 'exp_quad', as this is the only currently implemented covariance function type.
+
+    Notes
+    -----
+    The exponential quadratic covariance function is a popular choice for modeling smooth functions in GPs due to
+    its flexibility and the smoothness of the resulting functions. The addition of a 'nugget' term to the covariance
+    matrix diagonal helps prevent issues with matrix inversion by improving its condition number.
+    """
+
+    # Validation checks
+    if not isinstance(x, np.ndarray):
+        raise ValueError("`x` must be a numpy array.")
+    if x.ndim not in [1, 2]:
+        raise ValueError("`x` must be either 1D or 2D numpy array.")
+    
+    if not isinstance(l, (int, float)) or l <= 0:
+        raise ValueError("`l` (length scale) must be a positive number.")
+    
+    if not isinstance(sigma, (int, float)) or sigma <= 0:
+        raise ValueError("`sigma` (signal variance) must be a positive number.")
+    
+    if not isinstance(nugget, (int, float)) or nugget < 0:
+        raise ValueError("`nugget` must be a non-negative number.")
+    
+    if not isinstance(threshold, float) or not 0 < threshold < 1:
+        raise ValueError("`threshold` must be between 0 and 1, exclusive.")
+    
+    if num_singular_values is not None:
+        if not isinstance(num_singular_values, int) or num_singular_values <= 0 or num_singular_values > x.shape[0]:
+            raise ValueError("`num_singular_values` must be a positive integer not exceeding the number of observations.")
+
+    if not type_cov in ['exp_quad', 'exp_sine_squared', 'matern_3_2', 'matern_5_2', 'dot_product', 'exponential']:
+        raise ValueError('Covariance function type not supported!')
+
+    if type_cov == 'exp_sine_squared':
+        if period is None:
+            raise ValueError('`period` needs to be provided if covariance is exponential sine squared.')
+        if not isinstance(period, (int, float)) or period < 0:
+            raise ValueError('`period` must be a non-negative number.')
+
+    if x.ndim == 1:  # 1D case
+        L = len(x)
+    elif x.ndim == 2:  # 2D case
+        # Efficiently compute squared distances for 2D case
+        L = x.shape[0]
+    else:
+        raise ValueError("Input x must be either 1D or 2D numpy array.")
+
+    def _squared_distance(x, y=None):
+        """
+        Compute the squared Euclidean distance between points in x and y.
+        """
+        if y is None:
+            y = x
+        if x.ndim == 1:
+            dist_sq = np.subtract.outer(x, y)**2
+        else:
+            dist_sq = np.sum((x[:, None, :] - y[None, :, :]) ** 2, axis=-1)
+        return dist_sq
+
+
+    def gp_exp_sine_squared_cov(x, l, sigma_f, p, nugget):
+        """
+        Exp-Sine-Squared covariance function (Periodic Kernel).
+        
+        Parameters:
+        - l: length scale.
+        - p: periodicity.
+        - sigma_f: signal variance.
+        """
+        dist_sq = _squared_distance(x)
+        K = sigma_f**2 * np.exp(-2 * np.sin(np.pi * np.sqrt(dist_sq) / p)**2 / l**2)
+        K += np.eye(len(x)) * nugget
+        return K
+
+
+    # Define the exponential quadratic covariance function
+    def gp_exp_quad_cov(x, l=l, sigma_f=sigma, nugget=nugget):
+        """Generate the exponential quadratic covariance matrix for 1D or 2D inputs."""
+        dist_sq = _squared_distance(x)
+        # Exponential quadratic function
+        K = sigma_f**2 * np.exp(-0.5 / l**2 * dist_sq)
+        # Adding a nugget term to the diagonal (for numerical stability)
+        K += np.eye(len(x)) * nugget
+        return K
+
+    def gp_matern_3_2_cov(x, l, sigma_f, nugget):
+        """
+        Matérn 3/2 covariance function.
+        """
+        r = np.sqrt(3) * np.sqrt(_squared_distance(x))
+        K = sigma_f**2 * (1 + r / l) * np.exp(-r / l)
+        K += np.eye(len(x)) * nugget
+        return K
+
+    def gp_matern_5_2_cov(x, l, sigma_f, nugget):
+        """
+        Matérn 5/2 covariance function.
+        """
+        r = np.sqrt(5) * np.sqrt(_squared_distance(x))
+        K = sigma_f**2 * (1 + r / l + r**2 / (3 * l**2)) * np.exp(-r / l)
+        K += np.eye(len(x)) * nugget
+        return K
+
+    def gp_dot_product_cov(x, sigma_f, nugget):
+        """
+        Dot Product covariance function.
+        Assumes x is centered (mean removed).
+        """
+        if x.ndim == 1:
+            x = x.reshape(-1, 1)
+        K = sigma_f**2 + x @ x.T
+        K += np.eye(x.shape[0]) * nugget
+        return K
+
+    def gp_exponential_cov(x, l, sigma_f, nugget):
+        """
+        Exponential covariance function.
+        """
+        r = np.sqrt(_squared_distance(x))
+        K = sigma_f**2 * np.exp(-r / l)
+        K += np.eye(len(x)) * nugget
+        return K    
+
+    # Compute the covariance matrix Σ based on the specified kernel type
+    if type_cov == 'exp_quad':
+        Sigma = gp_exp_quad_cov(x, l, sigma, nugget)
+    elif type_cov == 'exp_sine_squared':
+        Sigma = gp_exp_sine_squared_cov(x, l, sigma, period, nugget)
+    elif type_cov == 'matern_3_2':
+        Sigma = gp_matern_3_2_cov(x, l, sigma, nugget)
+    elif type_cov == 'matern_5_2':
+        Sigma = gp_matern_5_2_cov(x, l, sigma, nugget)
+    elif type_cov == 'dot_product':
+        Sigma = gp_dot_product_cov(x, sigma, nugget)
+    elif type_cov == 'exponential':
+        Sigma = gp_exponential_cov(x, l, sigma, nugget)
+
+    B_dict = build_matrix_B_from_covariance_matrix(Sigma, x, num_singular_values, threshold, use_S)
+
+    return B_dict
+
+
+
+def build_matrix_B_from_covariance_matrix(Sigma, x, num_singular_values = None, threshold = 0.999, use_S = True):
+    """
+    Constructs the basis matrix B from a given covariance matrix Sigma through Singular Value Decomposition (SVD).
+    This matrix B approximates the original covariance structure within a lower-dimensional space, facilitating
+    dimensionality reduction and efficient computation in Gaussian Process (GP) models. The selection of singular 
+    values and the construction of B depend on either the specified number of singular values or a variance 
+    threshold that determines how many singular values to retain.
+
+    Parameters
+    ----------
+    Sigma : numpy.ndarray
+        The covariance matrix from which the basis matrix B is constructed. Must be a square, symmetric matrix.
+    x : numpy.ndarray
+        The input locations at which the GP's covariance structure is evaluated, used for determining the
+        dimensions of the input space. Can be either a 1D or 2D numpy array.
+    num_singular_values : int, optional
+        The number of singular values to retain in the construction of the basis matrix B. If not specified, the number
+        is determined based on the `threshold` parameter.
+    threshold : float, optional
+        The cumulative proportion of the total variance that the selected singular values must capture. Used to determine
+        the number of singular values to retain if `num_singular_values` is not specified. Defaults to 0.999.
+    use_S : bool, optional
+        Determines whether the singular values are used in constructing the basis matrix B. If True, the basis matrix
+        B is scaled by the square root of the singular values, otherwise, B consists only of the left singular vectors.
+        Defaults to True.
+
+    Returns
+    -------
+    dict
+        A dictionary containing the following keys and values:
+        - 'L': int, the number of input locations.
+        - 'p': int, the number of singular values (and hence the dimensionality of the basis matrix B).
+        - 'B': numpy.ndarray, the constructed basis matrix of shape (L, p).
+        - 't': numpy.ndarray, a copy of the input locations `x`.
+
+    Raises
+    ------
+    ValueError
+        - If `Sigma` is not a square numpy array or if it is not symmetric.
+        - If `x` is not a numpy array or if it is not either 1D or 2D.
+        - If `num_singular_values` is specified but is not a positive integer or exceeds the dimensionality of `Sigma`.
+        - If `threshold` is not between 0 and 1, inclusive, since it represents a proportion of total variance.
+    """
+
+    # Validation checks
+    if not isinstance(Sigma, np.ndarray) or Sigma.ndim != 2 or Sigma.shape[0] != Sigma.shape[1]:
+        raise ValueError("`Sigma` must be a square numpy array.")
+
+    if not np.allclose(Sigma, Sigma.T):
+        raise ValueError("`Sigma` must be symmetric.")
+
+    if not isinstance(x, np.ndarray) or x.ndim not in [1, 2]:
+        raise ValueError("`x` must be either a 1D or 2D numpy array.")
+
+    if num_singular_values is not None:
+        if not isinstance(num_singular_values, int) or num_singular_values <= 0 or num_singular_values > Sigma.shape[0]:
+            raise ValueError("`num_singular_values` must be a positive integer not exceeding the dimensions of `Sigma`.")
+
+    if not isinstance(threshold, float) or not 0 <= threshold <= 1:
+        raise ValueError("`threshold` must be between 0 and 1, inclusive.")
+
+    if x.ndim == 1:  # 1D case
+        L = len(x)
+    elif x.ndim == 2:  # 2D case
+        # Efficiently compute squared distances for 2D case
+        L = x.shape[0]
+    else:
+        raise ValueError("Input x must be either 1D or 2D numpy array.")
+
+    # Singular Value Decomposition (SVD) of Σ
+    U, S, _ = np.linalg.svd(Sigma)
+
+    if num_singular_values is None:
+        aux = np.cumsum(S)
+        num_singular_values = np.where( aux/aux[-1] > threshold )[0][0]
+
+    # Construct S1 (square root of the first num_singular_values diagonal matrix of singular values)
+    S1 = np.diag(np.sqrt(S[:num_singular_values]))
+
+    # Select the first num_singular_values columns of U
+    U1 = U[:, :num_singular_values]
+
+    # Matrix multiplication to get B
+    if use_S:
+        B = U1 @ S1
+    else:
+        B = U1
+
+    B_dict = {
+        'L': L,
+        'p': num_singular_values,
+        'B': B,
+        't': x,
+    }
+
+    return(B_dict)
+
+
+
+
+
+
+def prior_predictive_properties_from_prior_dict(prior_dict):
+    """
+    Computes various prior predictive properties from a given prior dictionary, displaying results in LaTeX format.
+
+    This function takes a prior dictionary, which is expected to be the output from `make_prior_dict`, and calculates several
+    statistics related to prior predictive distributions, including expectations, variances, and ratios related to the precision
+    of lambda (τλ), the total variance due to white noise (σ²WN), the idiosyncratic functional variance (σ²I), and the variance
+    explained by latent factors (σ²Λ). It visualizes the covariance and correlation matrices for given B matrices within the prior
+    dictionary. It also computes the expected lambda precision, the variance of lambda precision, and the total variance
+    explained by latent factors, adjusted for sample size and biases. The function issues a warning if the noise scale
+    multipliers for theta are not equal, as it assumes a common β parameter for these computations.
+
+    Parameters:
+    prior_dict (dict): A dictionary containing prior distributions and parameters. It is expected to include keys such as
+    'alpha_1', 'alpha_2', 'L1', 'L2', 'k', 'v', 'nu', 'alpha_psi', 'beta_psi', 'psi_noise_scale_multiplier_1',
+    'psi_noise_scale_multiplier_2', 'alpha_sigma', 'beta_sigma', 'theta_noise_scale_multiplier_1',
+    'theta_noise_scale_multiplier_2', 'B1', 'B2', and 'X' among others.
+
+    Displays:
+    - LaTeX representations of calculated expectations, variances, and ratios.
+    - Covariance and correlation matrices visualizations for the matrices B1 and B2 in the prior dictionary.
+
+    Note:
+    This function makes use of `IPython.display.display` and `IPython.display.Latex` for rendering LaTeX formatted outputs.
+    Ensure IPython and its display modules are installed and available for import when using this function.
+
+    Warnings:
+    - Outputs a warning if 'theta_noise_scale_multiplier_1' is not equal to 'theta_noise_scale_multiplier_2', which can
+    affect the computation of beta_sigma.
+
+    Returns:
+    None
+    """
+
+    from IPython.display import display, Latex
+
+    α_1 = prior_dict['alpha_1']
+    α_2 = prior_dict['alpha_2']
+
+    L1 = prior_dict['L1']
+    L2 = prior_dict['L2']
+    k = prior_dict['k']
+
+    nu = prior_dict['v']
+    chi = prior_dict['nu']
+
+    alpha_psi = prior_dict['alpha_psi']
+    beta_psi_1 = prior_dict['beta_psi']*prior_dict['psi_noise_scale_multiplier_1']
+    beta_psi_2 = prior_dict['beta_psi']*prior_dict['psi_noise_scale_multiplier_2']
+
+    alpha_sigma = prior_dict['alpha_sigma']
+    beta_sigma_1 = prior_dict['beta_sigma']*prior_dict['theta_noise_scale_multiplier_1']
+    beta_sigma_2 = prior_dict['beta_sigma']*prior_dict['theta_noise_scale_multiplier_2']
+
+    if prior_dict['theta_noise_scale_multiplier_1'] != prior_dict['theta_noise_scale_multiplier_2']:
+        print("Warning! This computation assumes same β parameter for θs... computing beta_sigma as the average of the two.")
+    beta_sigma = 0.5*(beta_sigma_1 + beta_sigma_2)
+
+    B1 = prior_dict['B1']
+    B2 = prior_dict['B2']
+
+    S = np.cov(prior_dict['X'].T, rowvar=False)
+    trace_S = np.trace(S)
+    total_variance_unbiased = (prior_dict['X'].shape[1]-1)/(prior_dict['X'].shape[1] - prior_dict['X'].shape[0]) * trace_S
+    estimator_squared_norm = np.square(np.mean(prior_dict['X'], axis=1)).sum() + total_variance_unbiased
+
+    Exp_Lambda_Prec_1 = 1/(α_1-1)
+    Exp_Lambda_Prec = np.power(α_2-1, -k+1)/(α_1-1)
+    Var_Lambda_Prec_Ratio = (1 - np.power((α_2-2)/(α_2-1), k-1))/(np.power((α_2-1)*(α_2-2), k-1))
+    Var_Lambda_Prec = (1 - (α_1-2)*np.power((α_2-2)/(α_2-1), k-1)/(α_1-1))/(np.power((α_2-1)*(α_2-2), k-1))/(α_1-1)/(α_1-2)
+    portion_of_LF_explained_variance = 1 - np.power(α_2-1, -k)
+    Variance_Of_Latent_Factors = nu*(α_2-1)/(nu-2)/(α_1-1)/(α_2-2)
+
+    Total_Variance_due_to_WN_1 = L1*beta_psi_1/(alpha_psi-1)
+    Total_Variance_due_to_WN_2 = L2*beta_psi_2/(alpha_psi-1)
+    Total_Variance_due_to_WN = Total_Variance_due_to_WN_1 + Total_Variance_due_to_WN_2
+
+    Idiosyncratic_Functional_Variance = beta_sigma/(alpha_sigma - 1)
+
+    Hat_Matrix_1 = B1@(B1.T)
+    Hat_Matrix_2 = B2@(B2.T)
+
+    Trace_Of_Hat_Matrix_1 = np.diag(Hat_Matrix_1).sum()
+    Trace_Of_Hat_Matrix_2 = np.diag(Hat_Matrix_2).sum()
+    Trace_Of_Hat_Matrix = Trace_Of_Hat_Matrix_1 + Trace_Of_Hat_Matrix_2
+
+    Total_Variance_Explained_by_Latent_Factors_ifX_is_0 = portion_of_LF_explained_variance*Trace_Of_Hat_Matrix*Variance_Of_Latent_Factors
+    Total_Variance_Explained_by_Latent_Factors = Total_Variance_Explained_by_Latent_Factors_ifX_is_0*(1 + chi/(chi-2)*estimator_squared_norm)
+
+    display(Latex(
+        r'$$\mathbb{E}\left[\left(\tau_{\lambda 1}^{(i)}\right)^{-1}\right]=\frac{1}{\alpha_1-1} \approx ' + f"{Exp_Lambda_Prec_1:.2f}" + '$$'
+    ))
+
+    display(Latex(
+        r'$$\mathbb{E}\left[\left(\tau_{\lambda k}^{(i)}\right)^{-1}\right]=\frac{1}{\alpha_1-1}\left(\frac{1}{\alpha_2-1}\right)^{k-1} \approx ' + f"{Exp_Lambda_Prec:.2f}" + '$$'
+    ))
+
+    display(Latex(
+        r'$$\operatorname{\mathbb{V}ar}\left[\left(\frac{\tau_{\lambda k}^{(i)}}{\tau_{\lambda 1}^{(i)}}\right)^{-1}\right]=\left[\frac{1}{\left(\alpha_2-1\right)\left(\alpha_2-2\right)}\right]^{k-1} \cdot\left[1-\left(\frac{\alpha_2-2}{\alpha_2-1}\right)^{k-1}\right] \approx ' + f"{Var_Lambda_Prec_Ratio:.2f}" +'$$'
+    ))
+
+    display(Latex(
+        r'$$\operatorname{Var}\left[\left(\tau_{\lambda k}^{(i)}\right)^{-1}\right]=\frac{1}{\left(\alpha_1-1\right)\left(\alpha_1-2\right)}\left[\frac{1}{\left(\alpha_2-1\right)\left(\alpha_2-2\right)}\right]^{k-1} \cdot\left[1-\frac{\alpha_1-2}{\alpha_1-1}\left(\frac{\alpha_2-2}{\alpha_2-1}\right)^{k-1}\right] \approx ' + f"{Var_Lambda_Prec:.2f}" + '$$'
+    ))
+
+#    display(Latex(
+#        r'$$\sigma^2_{\mathcal{W}\mathcal{N}} = \frac{(L_1 + L_2)\beta_\psi}{\alpha_\psi-1} \approx ' + f"{Total_Variance_due_to_WN:.2f}" + '$$'
+#    ))
+    display(Latex(
+        '$$' + r'{\sigma^2_{\mathcal{W}\mathcal{N}}}^{(1)} = \frac{L_1\beta_\psi^{(1)}}{\alpha_\psi-1} \approx ' + f"{Total_Variance_due_to_WN_1:.2f}" + ', \qquad ' + r'{\sigma^2_{\mathcal{W}\mathcal{N}}}^{(2)} = \frac{L_2 \beta_\psi^{(2)}}{\alpha_\psi-1} \approx ' + f"{Total_Variance_due_to_WN_2:.2f}" + ', \qquad ' + r'\sigma^2_{\mathcal{W}\mathcal{N}} = {\sigma^2_{\mathcal{W}\mathcal{N}}}^{(1)} + {\sigma^2_{\mathcal{W}\mathcal{N}}}^{(2)} \approx ' + f"{Total_Variance_due_to_WN:.2f}" + '$$'
+    ))
+
+    display(Latex(
+        r'$$\textbf{Tr}\left( B^{(1)}{B^{(1)}}^T \right) \approx' + f"{Trace_Of_Hat_Matrix_1:.2f}" +', \qquad ' + r'\textbf{Tr}\left( B^{(2)}{B^{(2)}}^T \right) \approx' + f"{Trace_Of_Hat_Matrix_2:.2f}" + ', \qquad' + r'\textbf{Tr}\left( B B^T \right) \approx' + f"{Trace_Of_Hat_Matrix:.2f}" + '$$'
+    ))
+
+    display(Latex(
+        '$$' + r'{\sigma^2_{\mathcal{W}\mathcal{N}}}^{(1)}/L_1 = \frac{\beta_\psi^{(1)}}{\alpha_\psi-1} \approx ' + f"{Total_Variance_due_to_WN_1/L1:.2f}" + ', \qquad ' + r'\frac{{\sigma^2_{\mathcal{W}\mathcal{N}}}^{(2)}}{L_2} = \frac{\beta_\psi^{(2)}}{\alpha_\psi-1} \approx ' + f"{Total_Variance_due_to_WN_2/L2:.2f}" + ', \qquad ' + r'\sigma^2_{\mathcal{W}\mathcal{N}}/(L_1 + L_2) = \frac{{\sigma^2_{\mathcal{W}\mathcal{N}}}^{(1)} + {\sigma^2_{\mathcal{W}\mathcal{N}}}^{(2)}}{L_1 + L_2} \approx ' + f"{Total_Variance_due_to_WN/(L1+L2):.2f}" + '$$'
+    ))
+#    display(Latex(
+#        r'$$\sigma^2_{\mathcal{W}\mathcal{N}}/(L_1+L_2) = \frac{\beta_\psi}{\alpha_\psi-1} \approx ' + f"{Total_Variance_due_to_WN/(L1+L2):.2f}" + '$$'
+#    ))
+
+    display(Latex(
+        r'$$\frac{\textbf{Tr}\left( B^{(1)}{B^{(1)}}^T \right)}{L_1} \approx' + f"{Trace_Of_Hat_Matrix_1/(L1):.2f}" +', \qquad ' + r'\frac{\textbf{Tr}\left( B^{(2)}{B^{(2)}}^T \right)}{L_2} \approx' + f"{Trace_Of_Hat_Matrix_2/L2:.2f}" + ', \qquad' + r'\frac{\textbf{Tr}\left( B B^T \right)}{L_1+L_2} \approx' + f"{Trace_Of_Hat_Matrix/(L1+L2):.2f}" + '$$'
+    ))
+
+    display(Latex(
+        r'$$\rho_{\Lambda}^{(k)}=\Sigma_{T \Lambda}^k / \Sigma_{T \Lambda}^{\infty}=1-\left(\frac{1}{\alpha_2-1}\right)^k \approx ' + f"{portion_of_LF_explained_variance:.2f}" + '$$'
+    ))
+
+    display(Latex(
+        r'$$\sigma_{\Lambda}^2=\frac{\nu}{\nu-2} \frac{1}{\alpha_1-1} \frac{\alpha_2-1}{\alpha_2-2} \approx ' + f"{Variance_Of_Latent_Factors:.2f}" + '$$'
+    ))
+
+    display(Latex(
+        '$$' + r'\sigma^2_{\mathcal{I}} = \frac{\beta_\sigma}{\alpha_\sigma - 1}' + f"{Idiosyncratic_Functional_Variance:.2f}" + '$$'
+    ))
+
+    display(Latex(
+        '$$' + r'\left.\Sigma_{T \Lambda, s}^k\right|_{X=0}=\rho_{\Lambda}^{(k)}\sigma_{\Lambda}^2 \operatorname{Tr}\left(\boldsymbol{B} \boldsymbol{B}^T\right) \approx ' + f"{Total_Variance_Explained_by_Latent_Factors_ifX_is_0:.2f}" + '$$'
+    ))
+    display(Latex(
+        '$$' + r'\Sigma_{T \Lambda, s}^k=\rho_{\Lambda}^{(k)} \operatorname{Tr}\left(\boldsymbol{B} \boldsymbol{B}^T\right)\left[\sigma_{\Lambda}^2\left(1+\frac{\chi}{\chi-2}\left\|\boldsymbol{X}_{\cdot, s}\right\|_2^2\right)\right] \approx ' + f"{Total_Variance_Explained_by_Latent_Factors:.2f}" + '$$'
+    ))
+
+    display(Latex(
+        '$$' + r'\frac{\left.\Sigma_{T \Lambda, s}^k\right|_{X=0}}{L_1+L_2} \approx' + f"{Total_Variance_Explained_by_Latent_Factors_ifX_is_0/(L1+L2):.2f}" + '$$'
+    ))
+    display(Latex(
+        '$$' + r'\frac{\Sigma_{T \Lambda, s}^k}{L_1+L_2} \approx' + f"{Total_Variance_Explained_by_Latent_Factors/(L1+L2):.2f}" + '$$'
+    ))
+
+    display(Latex(
+        '$$' + r'\operatorname{Tr}\left(\boldsymbol{B} \boldsymbol{B}^T\right)\left[\sigma_{\mathcal{I}}^2+\rho_{\Lambda}^{(k)} \sigma_{\Lambda}^2\right] \approx ' + f"{Total_Variance_Explained_by_Latent_Factors_ifX_is_0 + Trace_Of_Hat_Matrix*Idiosyncratic_Functional_Variance:.2f}" + '$$'
+    ))
+
+    display(Latex(
+        '$$' + r'\operatorname{Tr}\left(\boldsymbol{B} \boldsymbol{B}^T\right)\left[\sigma_{\mathcal{I}}^2+\rho_{\Lambda}^{(k)} \sigma_{\Lambda}^2\left(1+\frac{\chi}{\chi-2}\left\|\boldsymbol{X}_{,, s}\right\|_2^2\right)\right] \approx ' + f"{Total_Variance_Explained_by_Latent_Factors + Trace_Of_Hat_Matrix*Idiosyncratic_Functional_Variance:.2f}" + '$$'
+    ))
+
+    display(Latex(
+        '$$' + r'\frac{\operatorname{Tr}\left(\boldsymbol{B} \boldsymbol{B}^T\right)}{L_1+L_2}\left[\sigma_{\mathcal{I}}^2+\rho_{\Lambda}^{(k)} \sigma_{\Lambda}^2\right] \approx ' + f"{Total_Variance_Explained_by_Latent_Factors_ifX_is_0/(L1+L2) + Trace_Of_Hat_Matrix*Idiosyncratic_Functional_Variance/(L1+L2):.2f}" + '$$'
+    ))
+
+    display(Latex(
+        '$$' + r'\frac{\operatorname{Tr}\left(\boldsymbol{B} \boldsymbol{B}^T\right)}{L_1+L_2}\left[\sigma_{\mathcal{I}}^2+\rho_{\Lambda}^{(k)} \sigma_{\Lambda}^2\left(1+\frac{\chi}{\chi-2}\left\|\boldsymbol{X}_{,, s}\right\|_2^2\right)\right] \approx ' + f"{Total_Variance_Explained_by_Latent_Factors/(L1+L2) + Trace_Of_Hat_Matrix*Idiosyncratic_Functional_Variance/(L1+L2):.2f}" + '$$'
+    ))
+
+    nugget_1 = Total_Variance_due_to_WN_1/L1
+    nugget_2 = Total_Variance_due_to_WN_2/L2
+    multiplier = portion_of_LF_explained_variance*Variance_Of_Latent_Factors*(1 + chi/(chi-2)*estimator_squared_norm)
+
+    fig, axs = plt.subplots(2,2,figsize=(13,12))
+    show_hat_matrix(B1,axs[0,0], corr=False, nugget=nugget_1, multiplier=multiplier)
+    show_hat_matrix(B2,axs[0,1], corr=False, nugget=nugget_2, multiplier=multiplier)
+    show_hat_matrix(B1,axs[1,0], corr=True, nugget=nugget_1, multiplier=multiplier)
+    show_hat_matrix(B2,axs[1,1], corr=True, nugget=nugget_2, multiplier=multiplier)
+
+
+def show_hat_matrix(B, ax=None, corr=False, nugget=0, multiplier=1.0):
+    """
+    Displays the covariance or correlation matrix for the given B matrix, optionally adding a nugget to the diagonal.
+
+    This function calculates and visualizes the covariance or correlation matrix derived from a given B matrix. It supports
+    adjusting the visualization by adding a nugget to the diagonal elements of the covariance matrix and by scaling the matrix
+    with a multiplier. The visualization is done using matplotlib, with the matrix displayed as an image where the colors
+    represent the values of the matrix elements.
+
+    Parameters:
+    B (numpy.ndarray): The B matrix for which the covariance or correlation matrix is computed and visualized.
+    ax (matplotlib.axes.Axes, optional): The matplotlib Axes object where the matrix is plotted. If None, the current Axes
+    will be used or created if necessary. Defaults to None.
+    corr (bool, optional): If True, displays the correlation matrix instead of the covariance matrix. Defaults to False.
+    nugget (float, optional): A small value to be added to the diagonal elements of the covariance matrix before visualizing.
+    This can help improve numerical stability or highlight the diagonal. Defaults to 0.
+    multiplier (float, optional): A scaling factor applied to the entire matrix before visualization. Defaults to 1.0.
+
+    Returns:
+    None
+
+    Note:
+    Requires matplotlib for visualization. Ensure matplotlib is installed and imported in your environment.
+    """
+    
+    if ax is None:
+        ax = plt.gca()  # Get the current Axes instance on the current figure matching the given keyword args, or create one.
+    
+    hat_matrix = B @ B.T  # Covariance matrix
+    hat_matrix = multiplier*hat_matrix
+
+    # Add nugget to the diagonal
+    if nugget != 0:
+        np.fill_diagonal(hat_matrix, np.diag(hat_matrix) + nugget)
+
+    if corr:
+        # Convert to correlation matrix
+        stddev = np.sqrt(np.diag(hat_matrix))  # Standard deviations are sqrt of diagonal elements
+        stddev_matrix = np.outer(stddev, stddev)  # Create a matrix of product of std deviations
+        hat_matrix = np.divide(hat_matrix, stddev_matrix, where=stddev_matrix!=0)  # Normalize covariance matrix to get correlation matrix
+
+    im = ax.imshow(hat_matrix, cmap='viridis', interpolation='none')  # Display the matrix
+    plt.colorbar(im, ax=ax)  # Add a colorbar to a plot
+    ax.set_title('Correlation Matrix' if corr else 'Covariance Matrix')
