@@ -36,7 +36,7 @@ The package offers a suite of visualization tools designed to facilitate the exp
 - **3D Surface Plots**: The `plot_3d_with_computed_percentiles` and `plot_3d_with_computed_error_bars` functions allow for the visualization of data and model predictions in three dimensions. These tools can plot 3D surfaces representing the mean values from sample data and include shaded areas or error bars to depict variability, such as confidence intervals or predictive uncertainty.
 
 ### Stan Integration for Bayesian Inference
-At the core of the package's capabilities is its integration with Stan, a state-of-the-art platform for statistical modeling, Bayesian inference, and predictive modeling. This integration allows for specifying complex latent factor models and performing efficient, scalable inference on these models.
+At the core of the package's capabilities is its integration with Stan, a state-of-the-art platform for statistical modeling, Bayesian inference, and predictive modeling.
 
 ### Extensive Modeling and Analysis Functions
 Beyond its primary modeling capabilities, the package includes a variety of functions to support the analysis and interpretation of Bayesian latent factor models. This encompasses utilities for Varimax rotation, functions for projecting test samples into the space of rotated posterior latent factors, and tools for comparing the true latent structure of simulated datasets with the inferred structure. These functions are critical for conducting comprehensive analyses and ensuring the robustness of the findings.
