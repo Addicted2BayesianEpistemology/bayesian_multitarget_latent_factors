@@ -64,4 +64,4 @@ This package is designed for researchers and data scientists who aim to analyze 
 
 ## Acknowledgements
 - This project utilizes code from the scikit-learn project (https://github.com/scikit-learn/scikit-learn), specifically the _ortho_rotation from decomposition/_factor_analysis, which is licensed under the BSD 3-Clause License. The funciton has been used in the function Varimax_RSP used to interpret the latent factors from the MCMC samples.
-- This package builds on the powerful capabilities of Stan for Bayesian modeling.
+- This package builds on the powerful capabilities of Stan (https://mc-stan.org/users/documentation/) for Bayesian modeling.
