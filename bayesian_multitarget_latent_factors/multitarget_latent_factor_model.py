@@ -7,6 +7,7 @@ import xarray_einstats as xrein
 
 
 from .HMC_helper import execute_HMC as _execute_HMC
+from .HMC_helper import execute_pathfinder as _execute_pathfinder
 from .HMC_helper import MAP_and_LaplaceSample
 
 import pkg_resources
@@ -725,7 +726,7 @@ def compute_BLambaBetaX(B_xr, Λ_xr, β_xr, X_xr, B_dims = ['target_1_dim_idx','
 
 
 
-def sample_from_posterior(data_dic, rng_seed, stan_file_path=None, output_dir='./out', laplace_draws = 100, iter_warmup = 500, iter_sampling = 1000, do_prior_sampling = True, prior_draws = 1000, max_treedepth = 12, X_test = None, ):
+def sample_from_posterior(data_dic, rng_seed, stan_file_path=None, output_dir='./out', laplace_draws = 100, iter_warmup = 500, iter_sampling = 1000, do_prior_sampling = True, prior_draws = 1000, max_treedepth = 12, X_test = None, skip_Laplace = True):
     """
     Executes the Hamiltonian Monte Carlo (HMC) sampling for the multitarget latent factor model,
     incorporating Laplace approximation for initialization and generating prior and posterior samples.
@@ -798,6 +799,8 @@ def sample_from_posterior(data_dic, rng_seed, stan_file_path=None, output_dir='.
     sample_from_posterior_predictive: For generating posterior predictive samples.
     """
 
+    pathfinder = False
+
     from os import mkdir
     from shutil import rmtree
 
@@ -831,48 +834,66 @@ def sample_from_posterior(data_dic, rng_seed, stan_file_path=None, output_dir='.
     # Initialize random number generator
     rng = np.random.default_rng(rng_seed)
 
-    # Laplace Sample about the mode
-    idata_MAP = \
-    MAP_and_LaplaceSample(
-        data_dic,
-        rng.integers(1000000),
-        stan_file=stan_file,
-        output_dir= (output_dir + '/MAP_Laplace_outDir'),
-        lista_observed=['y1','y2'],
-        lista_lklhood=['y'],
-        lista_predictive=['y1','y2'],
-        laplace_draws=laplace_draws,
-    )
+    if not skip_Laplace:
+        # Laplace Sample about the mode
+        idata_MAP = \
+        MAP_and_LaplaceSample(
+            data_dic2,
+            rng.integers(1000000),
+            stan_file=stan_file,
+            output_dir= (output_dir + '/MAP_Laplace_outDir'),
+            lista_observed=['y1','y2'],
+            lista_lklhood=['y'],
+            lista_predictive=['y1','y2'],
+            laplace_draws=laplace_draws,
+        )
 
-    # Use the Laplace Samples to build the initial conditions of the Hamiltonian Monte Carlo Sampler
-    aux_dict = idata_MAP['Laplace_inference_data'].posterior.to_dict()    
-    inits_dict = []
-    for i in range(4):
-        init_dict = {}
-        for key in ['theta1', 'theta2', 'Lambda1', 'Lambda2', 'eta', 'beta', 'tau_theta1', 'tau_theta2', 'delta1', 'delta2', 'psi1', 'psi2']:
-            if key in ['psi1', 'psi2']:
-                init_dict[key] = idata_MAP['Laplace_inference_data'].posterior[key][0, i].values
-            elif key in ['delta1','delta2','tau_theta1','tau_theta2']:
-                init_dict[key] = idata_MAP['Laplace_inference_data'].posterior[key][0, i, :].values
-            else:
-                init_dict[key] = idata_MAP['Laplace_inference_data'].posterior[key][0, i, :, :].values
-        inits_dict.append(init_dict)
+        # Use the Laplace Samples to build the initial conditions of the Hamiltonian Monte Carlo Sampler
+        aux_dict = idata_MAP['Laplace_inference_data'].posterior.to_dict()    
+        inits_dict = []
+        for i in range(4):
+            init_dict = {}
+            for key in ['theta1', 'theta2', 'Lambda1', 'Lambda2', 'eta', 'beta', 'tau_theta1', 'tau_theta2', 'delta1', 'delta2', 'psi1', 'psi2']:
+                if key in ['psi1', 'psi2']:
+                    init_dict[key] = idata_MAP['Laplace_inference_data'].posterior[key][0, i].values
+                elif key in ['delta1','delta2','tau_theta1','tau_theta2']:
+                    init_dict[key] = idata_MAP['Laplace_inference_data'].posterior[key][0, i, :].values
+                else:
+                    init_dict[key] = idata_MAP['Laplace_inference_data'].posterior[key][0, i, :, :].values
+            inits_dict.append(init_dict)
+    else:
+        inits_dict = None
 
-    # Hamiltonian Monte Carlo
-    idata = \
-    _execute_HMC(
-        data_dic,
-        rng.integers(1000000),
-        stan_file=stan_file,
-        output_dir=(output_dir + '/HMC_outDir'),
-        iter_warmup=iter_warmup,
-        iter_sampling=iter_sampling,
-        max_treedepth=max_treedepth,
-        inits=inits_dict,
-        lista_observed=['y1','y2'],
-        lista_lklhood=['y'],
-        lista_predictive=['y1','y2']
-    )
+    if not pathfinder:
+        # Hamiltonian Monte Carlo
+        idata = \
+        _execute_HMC(
+            data_dic2,
+            rng.integers(1000000),
+            stan_file=stan_file,
+            output_dir=(output_dir + '/HMC_outDir'),
+            iter_warmup=iter_warmup,
+            iter_sampling=iter_sampling,
+            max_treedepth=max_treedepth,
+            inits=inits_dict,
+            lista_observed=['y1','y2'],
+            lista_lklhood=['y'],
+            lista_predictive=['y1','y2']
+        )
+    else:
+        # Pathfinder
+        idata = \
+        _execute_pathfinder(
+            data_dic2,
+            rng.integers(1000000),
+            stan_file=stan_file,
+            output_dir=(output_dir + '/PF_outDir'),
+            draws = iter_sampling,
+            inits=inits_dict,
+            lista_observed=['y1','y2'],
+            lista_lklhood=['y'],
+            lista_predictive=['y1','y2']
+        )
 
     # Sampling from the Prior
     if do_prior_sampling:
@@ -952,7 +973,7 @@ def sample_from_posterior(data_dic, rng_seed, stan_file_path=None, output_dir='.
     return(idata)
 
 
-def sample_from_posterior_moore_penrose_trick(data_dic, rng_seed, stan_file_path=None, output_dir='./out', laplace_draws = 100, iter_warmup = 500, iter_sampling = 1000, do_prior_sampling = True, prior_draws = 1000, max_treedepth = 12, X_test = None, ):
+def sample_from_posterior_moore_penrose_trick(data_dic, rng_seed, stan_file_path=None, output_dir='./out', laplace_draws = 100, iter_warmup = 500, iter_sampling = 1000, do_prior_sampling = True, prior_draws = 1000, max_treedepth = 12, X_test = None, skip_Laplace = True):
     """
     Executes the Hamiltonian Monte Carlo (HMC) sampling for the multitarget latent factor model,
     incorporating Laplace approximation for initialization and generating prior and posterior samples.
@@ -1025,6 +1046,8 @@ def sample_from_posterior_moore_penrose_trick(data_dic, rng_seed, stan_file_path
     sample_from_posterior_predictive: For generating posterior predictive samples.
     """
 
+    pathfinder = False
+
     from os import mkdir
     from shutil import rmtree
     from scipy.linalg import pinv
@@ -1096,48 +1119,67 @@ def sample_from_posterior_moore_penrose_trick(data_dic, rng_seed, stan_file_path
     if np.linalg.matrix_rank(data_dic['B2']) != data_dic['p2']:
         print("Warning: B2 doesn't have full column rank!")
 
-    # Laplace Sample about the mode
-    idata_MAP = \
-    MAP_and_LaplaceSample(
-        data_dic2,
-        rng.integers(1000000),
-        stan_file=stan_file,
-        output_dir= (output_dir + '/MAP_Laplace_outDir'),
-        lista_observed=['y1','y2'],
-        lista_lklhood=['y'],
-        lista_predictive=['y1','y2'],
-        laplace_draws=laplace_draws,
-    )
+    if not skip_Laplace:
+        # Laplace Sample about the mode
+        idata_MAP = \
+        MAP_and_LaplaceSample(
+            data_dic2,
+            rng.integers(1000000),
+            stan_file=stan_file,
+            output_dir= (output_dir + '/MAP_Laplace_outDir'),
+            lista_observed=['y1','y2'],
+            lista_lklhood=['y'],
+            lista_predictive=['y1','y2'],
+            laplace_draws=laplace_draws,
+        )
 
-    # Use the Laplace Samples to build the initial conditions of the Hamiltonian Monte Carlo Sampler
-    aux_dict = idata_MAP['Laplace_inference_data'].posterior.to_dict()    
-    inits_dict = []
-    for i in range(4):
-        init_dict = {}
-        for key in ['theta1', 'theta2', 'Lambda1', 'Lambda2', 'eta', 'beta', 'tau_theta1', 'tau_theta2', 'delta1', 'delta2', 'psi1', 'psi2']:
-            if key in ['psi1', 'psi2']:
-                init_dict[key] = idata_MAP['Laplace_inference_data'].posterior[key][0, i].values
-            elif key in ['delta1','delta2','tau_theta1','tau_theta2']:
-                init_dict[key] = idata_MAP['Laplace_inference_data'].posterior[key][0, i, :].values
-            else:
-                init_dict[key] = idata_MAP['Laplace_inference_data'].posterior[key][0, i, :, :].values
-        inits_dict.append(init_dict)
+        # Use the Laplace Samples to build the initial conditions of the Hamiltonian Monte Carlo Sampler
+        aux_dict = idata_MAP['Laplace_inference_data'].posterior.to_dict()    
+        inits_dict = []
+        for i in range(4):
+            init_dict = {}
+            for key in ['theta1', 'theta2', 'Lambda1', 'Lambda2', 'eta', 'beta', 'tau_theta1', 'tau_theta2', 'delta1', 'delta2', 'psi1', 'psi2']:
+                if key in ['psi1', 'psi2']:
+                    init_dict[key] = idata_MAP['Laplace_inference_data'].posterior[key][0, i].values
+                elif key in ['delta1','delta2','tau_theta1','tau_theta2']:
+                    init_dict[key] = idata_MAP['Laplace_inference_data'].posterior[key][0, i, :].values
+                else:
+                    init_dict[key] = idata_MAP['Laplace_inference_data'].posterior[key][0, i, :, :].values
+            inits_dict.append(init_dict)
+    else:
+        inits_dict = None
 
-    # Hamiltonian Monte Carlo
-    idata = \
-    _execute_HMC(
-        data_dic2,
-        rng.integers(1000000),
-        stan_file=stan_file,
-        output_dir=(output_dir + '/HMC_outDir'),
-        iter_warmup=iter_warmup,
-        iter_sampling=iter_sampling,
-        max_treedepth=max_treedepth,
-        inits=inits_dict,
-        lista_observed=['y1','y2'],
-        lista_lklhood=['y'],
-        lista_predictive=['y1','y2']
-    )
+    if not pathfinder:
+        # Hamiltonian Monte Carlo
+        idata = \
+        _execute_HMC(
+            data_dic2,
+            rng.integers(1000000),
+            stan_file=stan_file,
+            output_dir=(output_dir + '/HMC_outDir'),
+            iter_warmup=iter_warmup,
+            iter_sampling=iter_sampling,
+            max_treedepth=max_treedepth,
+            inits=inits_dict,
+            lista_observed=['y1','y2'],
+            lista_lklhood=['y'],
+            lista_predictive=['y1','y2']
+        )
+    else:
+        # Pathfinder
+        idata = \
+        _execute_pathfinder(
+            data_dic2,
+            rng.integers(1000000),
+            stan_file=stan_file,
+            output_dir=(output_dir + '/PF_outDir'),
+            draws = iter_sampling,
+            inits=inits_dict,
+            lista_observed=['y1','y2'],
+            lista_lklhood=['y'],
+            lista_predictive=['y1','y2']
+        )
+
 
     # Sampling from the Prior
     if do_prior_sampling:

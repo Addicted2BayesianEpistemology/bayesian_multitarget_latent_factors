@@ -204,6 +204,95 @@ def execute_HMC(data_dic,
     return idata
 
 
+def execute_pathfinder(data_dic,
+                        rng_seed,
+                        stan_file = './stan_codes/mean_estimation_prior.stan',
+                        output_dir = './out',
+                        draws = 1000,
+                        inits = None,
+                        history_size = None,
+                        lista_observed = [],
+                        lista_lklhood = [],
+                        lista_predictive = [],
+                        ):
+    """
+    Executes Pathfinder sampling for a given Stan model, with specified data, seed, and sampling parameters.
+
+    Args:
+        data_dic (dict): The data to be used in the model, in dictionary format.
+        rng_seed (int): The seed for the random number generator.
+        stan_file (str): The path to the Stan model file.
+        output_dir (str): The directory where output files will be saved.
+        draws (int): Number of approximate draws to return.
+        inits (str or dict): Initialization values for model parameters.
+        history_size (int): self explicatory xD
+        lista_observed (list): List of observed data variables.
+        lista_lklhood (list): List of variables to calculate log likelihood.
+        lista_predictive (list): List of predictive variables.
+
+    Returns:
+        idata (InferenceData): An ArviZ InferenceData object containing the results of the HMC simulation.
+    """
+    rng = _np.random.default_rng(rng_seed)
+    try:
+        _os.mkdir(output_dir)
+    except Exception as e:
+        print('While making output_dir')
+        print(e)
+        pass
+
+    json_filepath = output_dir + '/data.json'
+    f = open(json_filepath, mode='w')
+    def json_convert_helper(o):
+        if isinstance(o, _np.int64): return int(o)
+        elif isinstance(o, _np.ndarray): return list(o)
+        else: return(o)
+    _json.dump(data_dic, f, default=json_convert_helper)
+#    json.dump(data_dic, f)
+    f.close()
+
+    try:
+        _os.mkdir(output_dir + '/output_dir_PF')
+    except Exception as e:
+        print('While making /output_dir_PF')
+        print(e)
+        pass
+
+    model = _cmdstanpy.CmdStanModel(stan_file=stan_file)
+    fit = model.pathfinder(json_filepath, draws=draws,
+                           seed = rng.integers(1000000),
+                           history_size = history_size,
+                           inits = inits,
+                           output_dir = output_dir + '/output_dir_PF'
+                           )
+
+
+    try:
+        _shutil.rmtree(output_dir + '/resPF')
+    except Exception as e:
+        print('While removing /resPF')
+        print(e)
+        pass
+
+    fit.save_csvfiles(output_dir + '/resPF')
+
+    if len(lista_observed) == 0:
+        idata = _az.from_cmdstan([output_dir + '/resPF/' + file for file in _os.listdir(output_dir + '/resPF')],
+                                posterior_predictive = [var + '_predictive' for var in lista_predictive],
+                                constant_data = json_filepath,
+                                )
+    else:
+        idata = _az.from_cmdstan([output_dir + '/resPF/' + file for file in _os.listdir(output_dir + '/resPF')],
+                                posterior_predictive = [var + '_predictive' for var in lista_predictive],
+                                observed_data = json_filepath,
+                                observed_data_var = lista_observed,
+                                constant_data = json_filepath,
+                                constant_data_var = [var for var in list(data_dic.keys()) if var not in lista_observed],
+                                log_likelihood = {var: 'log_lik_'+var for var in lista_lklhood}
+                                )    
+    return idata
+
+
 def load_HMC(output_dir = './out',
              lista_observed = [],
              lista_lklhood = [],
