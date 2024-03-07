@@ -1586,7 +1586,7 @@ def sample_conditional_predictive(idata, X_test, rng_seed, group = "posterior", 
 
         if required == 'predictive idiosyncratic':
             Σout -= \
-            np.square( xr_dataset[f'psi{unknown_target}']*xr.DataArray(0.99*np.eye(Σout.sizes['target_out_idx']), dims=['target_out_idx','target_out_idx2']) )
+            np.square( idata.constant_data[f'psi_noise_scale_multiplier_{unknown_target}'].values[0]*xr_dataset[f'psi{unknown_target}']*xr.DataArray(0.99*np.eye(Σout.sizes['target_out_idx']), dims=['target_out_idx','target_out_idx2']) )
 
         # Random sample to get the predictive/predictive idiosyncratic
         Y_predictive = estimate_Y + \
