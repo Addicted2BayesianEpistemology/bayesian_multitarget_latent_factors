@@ -1,2 +1,3 @@
 - `An Overview of Basis Matrices` contains a depiction of all currently implemented Basis Functions
 - `SIS2024` contains the notebook used to generate the figures shown in `Bayesian latent factor model for multi-target inference` short paper submitted for the 52nd Scientific Meeting of the Italian Statistical Society.
+- `SIS2024_3D` contains an example notebook showing the capabilities of the model in case of a functional target in a bidimensional domain.
