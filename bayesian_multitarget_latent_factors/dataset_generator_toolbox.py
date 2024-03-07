@@ -2435,19 +2435,19 @@ def initialize_hyperparams_dict(k = 4, v = 5, nu = 4, ψ_alpha = 5, ψ_beta = 4,
 
     return(
         {
-            'k': k,
-            'v': v,
-            'nu': nu,
-            'alpha_psi': ψ_alpha,
-            'beta_psi': ψ_beta,
-            'psi_noise_scale_multiplier_1': ψ_sigma_1,
-            'psi_noise_scale_multiplier_2': ψ_sigma_2,
-            'alpha_sigma': θ_alpha,
-            'beta_sigma': θ_beta,
-            'theta_noise_scale_multiplier_1': θ_sigma_1,
-            'theta_noise_scale_multiplier_2': θ_sigma_2,
-            'alpha_1': alpha_1,
-            'alpha_2': alpha_2
+            'k': int( k ),
+            'v': np.float_( v ),
+            'nu': np.float_( nu ),
+            'alpha_psi': np.float_( ψ_alpha ),
+            'beta_psi': np.float_( ψ_beta ),
+            'psi_noise_scale_multiplier_1': np.float_( ψ_sigma_1 ),
+            'psi_noise_scale_multiplier_2': np.float_( ψ_sigma_2 ),
+            'alpha_sigma': np.float_( θ_alpha ),
+            'beta_sigma': np.float_( θ_beta ),
+            'theta_noise_scale_multiplier_1': np.float_( θ_sigma_1 ),
+            'theta_noise_scale_multiplier_2': np.float_( θ_sigma_2 ),
+            'alpha_1': np.float_( alpha_1 ),
+            'alpha_2': np.float_( alpha_2 )
         }
     )
 
@@ -3007,8 +3007,8 @@ def prior_predictive_properties_from_prior_dict(prior_dict):
     B1 = prior_dict['B1']
     B2 = prior_dict['B2']
 
-    S = np.cov(prior_dict['X'].T, rowvar=False)
-    trace_S = np.trace(S)
+    S = np.cov(prior_dict['X'])
+    trace_S = np.float_( S ) if S.shape == (1,1) or S.ndim==0 else np.trace(S)
     total_variance_unbiased = (prior_dict['X'].shape[1]-1)/(prior_dict['X'].shape[1] - prior_dict['X'].shape[0]) * trace_S
     estimator_squared_norm = np.square(np.mean(prior_dict['X'], axis=1)).sum() + total_variance_unbiased
 
@@ -3028,8 +3028,8 @@ def prior_predictive_properties_from_prior_dict(prior_dict):
     Hat_Matrix_1 = B1@(B1.T)
     Hat_Matrix_2 = B2@(B2.T)
 
-    Trace_Of_Hat_Matrix_1 = np.diag(Hat_Matrix_1).sum()
-    Trace_Of_Hat_Matrix_2 = np.diag(Hat_Matrix_2).sum()
+    Trace_Of_Hat_Matrix_1 = Hat_Matrix_1[0][0] if Hat_Matrix_1.shape == (1,1) else np.diag(Hat_Matrix_1).sum() 
+    Trace_Of_Hat_Matrix_2 = Hat_Matrix_2[0][0] if Hat_Matrix_2.shape == (1,1) else np.diag(Hat_Matrix_2).sum() 
     Trace_Of_Hat_Matrix = Trace_Of_Hat_Matrix_1 + Trace_Of_Hat_Matrix_2
 
     Total_Variance_Explained_by_Latent_Factors_ifX_is_0 = portion_of_LF_explained_variance*Trace_Of_Hat_Matrix*Variance_Of_Latent_Factors
