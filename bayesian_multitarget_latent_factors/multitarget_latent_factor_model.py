@@ -1364,7 +1364,7 @@ def sample_from_posterior_predictive(rng_seed, idata, X_test):
 
 
 
-def sample_conditional_predictive(idata, X_test, rng_seed, group = "posterior", Y1_test = None, Y2_test = None, bootstrap = None, required = "predictive"):
+def sample_conditional_predictive(idata, X_test, rng_seed, group = "posterior", Y1_test = None, Y2_test = None, bootstrap = None, required = "predictive", fast_compute = True):
     """
     Samples from the conditional predictive distribution of a multitarget latent factor model.
 
@@ -1408,6 +1408,9 @@ def sample_conditional_predictive(idata, X_test, rng_seed, group = "posterior", 
         'predictive idiosyncratic', or 'predictive estimate'. Each option dictates the level of detail
         and the inclusion of noise components in the predictive distributions.
 
+    fast_compute : bool, optional
+        Specify if uses trick to compute Σ12 Σ22^-1 on the basis function space (reducing the cost significantly)
+
     Raises
     ------
     ValueError
@@ -1449,6 +1452,9 @@ def sample_conditional_predictive(idata, X_test, rng_seed, group = "posterior", 
     """
 
     from copy import deepcopy
+    import xarray_einstats as xrein
+    from bayesian_multitarget_latent_factors import renaming_convention
+    from scipy.linalg import pinv    
 
     # Input type and value checks
     if not isinstance(idata, az.InferenceData):
@@ -1552,37 +1558,113 @@ def sample_conditional_predictive(idata, X_test, rng_seed, group = "posterior", 
     Σout_in = Σout_in.rename({f'target_{unknown_target}_dim_idx':'target_out_idx', f'target_{known_target}_dim_idx':'target_in_idx'})
     Σin_out = Σin_out.rename({f'target_{unknown_target}_dim_idx':'target_out_idx', f'target_{known_target}_dim_idx':'target_in_idx'})
 
-    inverseΣin = \
-    xrein.linalg.inv(
-        Σin,
-        dims=['target_in_idx','target_in_idx2']
-    )
+    if not fast_compute:
+        inverseΣin = \
+        xrein.linalg.inv(
+            Σin,
+            dims=['target_in_idx','target_in_idx2']
+        )
+    else:
+        Λout_xr = deepcopy( renaming_convention( xr_dataset[f'Lambda{unknown_target}'] ).rename({f'basis_fun_branch_{unknown_target}_idx':'basis_fun_out_idx'}) )
+        Λin_xr  = deepcopy( renaming_convention( xr_dataset[f'Lambda{known_target}'] ).rename({f'basis_fun_branch_{known_target}_idx':'basis_fun_in_idx'}) )
 
-    estimate_Y += \
-    xrein.linalg.matmul(
-        Σout_in,
+        Bout_xr = deepcopy( 
+            renaming_convention( 
+                idata.constant_data[f'B{unknown_target}'] 
+            ).rename({f'basis_fun_branch_{unknown_target}_idx':'basis_fun_out_idx', f'target_{unknown_target}_dim_idx':'target_out_idx'})
+        )
+        Bin_xr = deepcopy( 
+            renaming_convention( 
+                idata.constant_data[f'B{known_target}'] 
+            ).rename({f'basis_fun_branch_{known_target}_idx':'basis_fun_in_idx', f'target_{known_target}_dim_idx':'target_in_idx'})
+        )
+
+        Bin_inv_xr = \
+        xr.DataArray(
+            pinv( idata.constant_data[f'B{known_target}'].values ),
+            dims=['basis_fun_in_idx','target_in_idx']
+        )
+
+        Σin_proj = \
         xrein.linalg.matmul(
-            inverseΣin,
+            Bin_inv_xr,
+            Σin,
+            dims=[['basis_fun_in_idx','target_in_idx'],['target_in_idx2','target_in_idx']]
+        )
+        Σin_proj = \
+        xrein.linalg.matmul(
+            Σin_proj,
+            Bin_inv_xr,
+            dims=[['basis_fun_in_idx','target_in_idx'],['target_in_idx','basis_fun_in_idx']]
+        )
+
+        inverseΣin_proj = \
+        xrein.linalg.inv(
+            Σin_proj,
+            dims=['basis_fun_in_idx','basis_fun_in_idx2']
+        )
+
+        conditional_regr = \
+        xrein.linalg.matmul(
+            Σout_in,
+            Bin_inv_xr,
+            dims=[['target_out_idx','target_in_idx'],['target_in_idx','basis_fun_in_idx']]
+        )
+        conditional_regr = \
+        xrein.linalg.matmul(
+            conditional_regr,
+            inverseΣin_proj,
+            dims=[['target_out_idx','basis_fun_in_idx'],['basis_fun_in_idx2','basis_fun_in_idx']]
+        )
+        conditional_regr = \
+        xrein.linalg.matmul(
+            conditional_regr,
+            Bin_inv_xr,
+            dims=[['target_out_idx','basis_fun_in_idx'],['basis_fun_in_idx','target_in_idx']]
+        )
+
+    if not fast_compute:
+        estimate_Y += \
+        xrein.linalg.matmul(
+            Σout_in,
+            xrein.linalg.matmul(
+                inverseΣin,
+                xr.DataArray(Y_test, dims=['target_in_idx','sample_idx']) - estimate_Yin,
+                dims=[['target_in_idx','target_in_idx2'],['target_in_idx','sample_idx']]
+            ),
+            dims=[['target_out_idx','target_in_idx'],['target_in_idx','sample_idx']]
+        )
+    else:
+        estimate_Y += \
+        xrein.linalg.matmul(
+            conditional_regr,
             xr.DataArray(Y_test, dims=['target_in_idx','sample_idx']) - estimate_Yin,
-            dims=[['target_in_idx','target_in_idx2'],['target_in_idx','sample_idx']]
-        ),
-        dims=[['target_out_idx','target_in_idx'],['target_in_idx','sample_idx']]
-    )
+            dims=[['target_out_idx','target_in_idx'],['target_in_idx','sample_idx']]            
+        )
 
     if required == 'predictive estimate':
         # Correctly format the predictive estimate
         Y_predictive = estimate_Y
     else: 
-        Σout -= \
-        xrein.linalg.matmul(
-            Σout_in,
+        if not fast_compute:
+            Σout -= \
             xrein.linalg.matmul(
-                inverseΣin,
+                Σout_in,
+                xrein.linalg.matmul(
+                    inverseΣin,
+                    Σin_out,
+                    dims=[['target_in_idx','target_in_idx2'],['target_in_idx','target_out_idx']]
+                ),
+                dims=[['target_out_idx','target_in_idx'],['target_in_idx','target_out_idx']]
+            )
+        else:
+            Σout -= \
+            xrein.linalg.matmul(
+                conditional_regr,
                 Σin_out,
-                dims=[['target_in_idx','target_in_idx2'],['target_in_idx','target_out_idx']]
-            ),
-            dims=[['target_out_idx','target_in_idx'],['target_in_idx','target_out_idx']]
-        )
+                dims=[['target_out_idx','target_in_idx'],['target_in_idx','target_out_idx']]
+            )
+
 
         if required == 'predictive idiosyncratic':
             Σout -= \
@@ -1822,7 +1904,7 @@ def sample_unconditional_predictive(idata, X_test, rng_seed, group = "posterior"
     )
 
 
-def get_relationship_between_targets(idata, group = "posterior", pointwise = False, bootstrap = None, known_target = 1, rng_seed = 999):
+def get_relationship_between_targets(idata, group = "posterior", pointwise = False, bootstrap = None, known_target = 1, rng_seed = 999, fast_compute = True):
     """
     The function computes the regression coefficients (β) that best describe the relationship between a known 
     target variable and an unknown target variable, based on the covariance matrices provided in the InferenceData 
@@ -1851,6 +1933,9 @@ def get_relationship_between_targets(idata, group = "posterior", pointwise = Fal
     rng_seed : int, optional
         The seed for the random number generator used in bootstrap resampling. Default is 999. Note that rng_seed 
         is used only if bootstrap is not None.
+
+    fast_compute : bool, optional
+        Specify if uses trick to compute Σ12 Σ22^-1 on the basis function space (reducing the cost significantly)
 
     Raises
     ------
@@ -1934,11 +2019,64 @@ def get_relationship_between_targets(idata, group = "posterior", pointwise = Fal
             dims=['target_in_idx','target_in_idx2']
         )).rename({'target_out_idx':f'target_{unknown_target}_dim_idx', 'target_in_idx':f'target_{known_target}_dim_idx'})
     else:
-        inverseΣin = \
-        xrein.linalg.inv(
-            Σin,
-            dims=['target_in_idx','target_in_idx2']
-        )
+        if not fast_compute:
+            inverseΣin = \
+            xrein.linalg.inv(
+                Σin,
+                dims=['target_in_idx','target_in_idx2']
+            )
+        else:
+            Λout_xr = deepcopy( renaming_convention( xr_dataset[f'Lambda{unknown_target}'] ).rename({f'basis_fun_branch_{unknown_target}_idx':'basis_fun_out_idx'}) )
+            Λin_xr  = deepcopy( renaming_convention( xr_dataset[f'Lambda{known_target}'] ).rename({f'basis_fun_branch_{known_target}_idx':'basis_fun_in_idx'}) )
+
+            Bout_xr = deepcopy( 
+                renaming_convention( 
+                    idata.constant_data[f'B{unknown_target}'] 
+                ).rename({f'basis_fun_branch_{unknown_target}_idx':'basis_fun_out_idx', f'target_{unknown_target}_dim_idx':'target_out_idx'})
+            )
+            Bin_xr = deepcopy( 
+                renaming_convention( 
+                    idata.constant_data[f'B{known_target}'] 
+                ).rename({f'basis_fun_branch_{known_target}_idx':'basis_fun_in_idx', f'target_{known_target}_dim_idx':'target_in_idx'})
+            )
+
+            Bin_inv_xr = \
+            xr.DataArray(
+                pinv( idata.constant_data[f'B{known_target}'].values ),
+                dims=['basis_fun_in_idx','target_in_idx']
+            )
+
+            Σin_proj = \
+            xrein.linalg.matmul(
+                Bin_inv_xr,
+                Σin,
+                dims=[['basis_fun_in_idx','target_in_idx'],['target_in_idx2','target_in_idx']]
+            )
+            Σin_proj = \
+            xrein.linalg.matmul(
+                Σin_proj,
+                Bin_inv_xr,
+                dims=[['basis_fun_in_idx','target_in_idx'],['target_in_idx','basis_fun_in_idx']]
+            )
+
+            inverseΣin_proj = \
+            xrein.linalg.inv(
+                Σin_proj,
+                dims=['basis_fun_in_idx','basis_fun_in_idx2']
+            )
+
+            inverseΣin = \
+            xrein.linalg.matmul(
+                Bin_inv_xr,
+                inverseΣin_proj,
+                dims=[['target_in_idx','basis_fun_in_idx'],['basis_fun_in_idx2','basis_fun_in_idx']]
+            )
+            inverseΣin = \
+            xrein.linalg.matmul(
+                inverseΣin,
+                Bin_inv_xr,
+                dims=[['target_in_idx','basis_fun_in_idx'],['basis_fun_in_idx','target_in_idx']]
+            )
 
         β = xrein.linalg.matmul(
             Σout_in,
