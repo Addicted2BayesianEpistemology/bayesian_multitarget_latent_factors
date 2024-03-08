@@ -1,4 +1,5 @@
 - `An Overview of Basis Matrices` contains a depiction of all currently implemented Basis Functions
 - `SIS2024` contains the notebook used to generate the figures shown in `Bayesian latent factor model for multi-target inference` short paper submitted for the 52nd Scientific Meeting of the Italian Statistical Society.
 - `SIS2024_3D` contains an example notebook showing the capabilities of the model in case of a functional target in a bidimensional domain.
-- `Moisture` contains an analysis of the Moisture dataset from R package [fds](https://cran.r-project.org/web/packages/fds/), providing an example of function to scalar regression using the BBLF model
+- `Moisture` contains an analysis of the Moisture dataset from R package [fds](https://cran.r-project.org/web/packages/fds/), providing an example of function to scalar regression, using the BBLF model
+- `Biscuit` contains an analysis of the Biscuit dataset from R package [fds](https://cran.r-project.org/web/packages/fds/), providing an example of function to multivariate target regression, using the BBLF model
