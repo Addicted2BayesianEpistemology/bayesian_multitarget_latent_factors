@@ -844,7 +844,7 @@ def sample_from_posterior(data_dic, rng_seed, stan_file_path=None, output_dir='.
             output_dir= (output_dir + '/MAP_Laplace_outDir'),
             lista_observed=['y1','y2'],
             lista_lklhood=['y'],
-            lista_predictive=['y1','y2'],
+            lista_predictive=[],
             laplace_draws=laplace_draws,
         )
 
@@ -878,7 +878,7 @@ def sample_from_posterior(data_dic, rng_seed, stan_file_path=None, output_dir='.
             inits=inits_dict,
             lista_observed=['y1','y2'],
             lista_lklhood=['y'],
-            lista_predictive=['y1','y2']
+            lista_predictive=[]
         )
     else:
         # Pathfinder
@@ -892,7 +892,7 @@ def sample_from_posterior(data_dic, rng_seed, stan_file_path=None, output_dir='.
             inits=inits_dict,
             lista_observed=['y1','y2'],
             lista_lklhood=['y'],
-            lista_predictive=['y1','y2']
+            lista_predictive=[]
         )
 
     # Sampling from the Prior
@@ -915,12 +915,6 @@ def sample_from_posterior(data_dic, rng_seed, stan_file_path=None, output_dir='.
     # Add the prior samples inside the inference data object and fix some naming of variables
     idata2 = \
     idata.rename(
-        name_dict={
-            'y1_predictive':'y1',
-            'y2_predictive':'y2',        
-        },
-        groups='posterior_predictive'
-    ).rename(
         name_dict={
             'y': 'y_posterior'
         },
@@ -1129,7 +1123,7 @@ def sample_from_posterior_moore_penrose_trick(data_dic, rng_seed, stan_file_path
             output_dir= (output_dir + '/MAP_Laplace_outDir'),
             lista_observed=['y1','y2'],
             lista_lklhood=['y'],
-            lista_predictive=['y1','y2'],
+            lista_predictive=[],
             laplace_draws=laplace_draws,
         )
 
@@ -1163,7 +1157,7 @@ def sample_from_posterior_moore_penrose_trick(data_dic, rng_seed, stan_file_path
             inits=inits_dict,
             lista_observed=['y1','y2'],
             lista_lklhood=['y'],
-            lista_predictive=['y1','y2']
+            lista_predictive=[]
         )
     else:
         # Pathfinder
@@ -1177,7 +1171,7 @@ def sample_from_posterior_moore_penrose_trick(data_dic, rng_seed, stan_file_path
             inits=inits_dict,
             lista_observed=['y1','y2'],
             lista_lklhood=['y'],
-            lista_predictive=['y1','y2']
+            lista_predictive=[]
         )
 
 
@@ -1201,12 +1195,6 @@ def sample_from_posterior_moore_penrose_trick(data_dic, rng_seed, stan_file_path
     # Add the prior samples inside the inference data object and fix some naming of variables
     idata2 = \
     idata.rename(
-        name_dict={
-            'y1_predictive':'y1',
-            'y2_predictive':'y2',        
-        },
-        groups='posterior_predictive'
-    ).rename(
         name_dict={
             'y': 'y_posterior'
         },

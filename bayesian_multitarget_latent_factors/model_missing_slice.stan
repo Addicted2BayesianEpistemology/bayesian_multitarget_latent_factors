@@ -178,10 +178,7 @@ generated quantities {
       }
       log_lik_y[i] = log_lik_y[i] - log(16);
       */
-
-      y1_predictive[:,i] = y_predictive_aux[1:L1];
-      y2_predictive[:,i] = y_predictive_aux[(L1+1):(L1+L2)];
-    }
+   }
   }
   
 }

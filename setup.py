@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='bayesian_multitarget_latent_factors',
-    version='0.6.0',
+    version='0.8.0',
     packages=find_packages(),
     package_data={
         # If any package contains *.stan files, include them:
@@ -14,7 +14,7 @@ setup(
         'scipy>=1.12.0',
         'xarray_einstats>=0.7.0',
         'ipywidgets>=8.1.2',
-        'IPython>=8.21.0',
+        'IPython>=7.20.0',
         'pandas>=2.2.0',
         'matplotlib>=3.8.2',
         'seaborn>=0.13.2',

@@ -127,8 +127,6 @@ generated quantities {
   matrix[L2,L1] Sigma_21 = B2*Lambda2*(Lambda1')*(B1');
   
   array[N] real log_lik_y;
-  matrix[L1,N] y1_predictive;
-  matrix[L2,N] y2_predictive;
   {
     matrix[L1+L2,L1+L2] Sigma;
     Sigma[1:L1,1:L1] = Sigma_11;
@@ -145,9 +143,6 @@ generated quantities {
       
       vector[L1+L2] y_predictive_aux = multi_normal_cholesky_rng(estimated_y_aux, Choleksy_Decomposed_Sigma);
       log_lik_y[i] = multi_normal_cholesky_lpdf(y_all[:,i] | estimated_y_aux, Choleksy_Decomposed_Sigma);
-      
-      y1_predictive[:,i] = y_predictive_aux[1:L1];
-      y2_predictive[:,i] = y_predictive_aux[(L1+1):(L1+L2)];
     }
   }
   
