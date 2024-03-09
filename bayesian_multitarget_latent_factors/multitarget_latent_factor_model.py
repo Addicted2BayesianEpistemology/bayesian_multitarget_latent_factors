@@ -844,7 +844,7 @@ def sample_from_posterior(data_dic, rng_seed, stan_file_path=None, output_dir='.
             output_dir= (output_dir + '/MAP_Laplace_outDir'),
             lista_observed=['y1','y2'],
             lista_lklhood=['y'],
-            lista_predictive=[],
+            lista_predictive=None,
             laplace_draws=laplace_draws,
         )
 
@@ -878,7 +878,7 @@ def sample_from_posterior(data_dic, rng_seed, stan_file_path=None, output_dir='.
             inits=inits_dict,
             lista_observed=['y1','y2'],
             lista_lklhood=['y'],
-            lista_predictive=[]
+            lista_predictive=None
         )
     else:
         # Pathfinder
@@ -892,7 +892,7 @@ def sample_from_posterior(data_dic, rng_seed, stan_file_path=None, output_dir='.
             inits=inits_dict,
             lista_observed=['y1','y2'],
             lista_lklhood=['y'],
-            lista_predictive=[]
+            lista_predictive=None
         )
 
     # Sampling from the Prior
@@ -1123,7 +1123,7 @@ def sample_from_posterior_moore_penrose_trick(data_dic, rng_seed, stan_file_path
             output_dir= (output_dir + '/MAP_Laplace_outDir'),
             lista_observed=['y1','y2'],
             lista_lklhood=['y'],
-            lista_predictive=[],
+            lista_predictive=None,
             laplace_draws=laplace_draws,
         )
 
@@ -1157,7 +1157,7 @@ def sample_from_posterior_moore_penrose_trick(data_dic, rng_seed, stan_file_path
             inits=inits_dict,
             lista_observed=['y1','y2'],
             lista_lklhood=['y'],
-            lista_predictive=[]
+            lista_predictive=None
         )
     else:
         # Pathfinder
@@ -1171,7 +1171,7 @@ def sample_from_posterior_moore_penrose_trick(data_dic, rng_seed, stan_file_path
             inits=inits_dict,
             lista_observed=['y1','y2'],
             lista_lklhood=['y'],
-            lista_predictive=[]
+            lista_predictive=None
         )
 
 

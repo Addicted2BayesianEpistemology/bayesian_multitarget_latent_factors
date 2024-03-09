@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='bayesian_multitarget_latent_factors',
-    version='0.8.0',
+    version='0.8.1',
     packages=find_packages(),
     package_data={
         # If any package contains *.stan files, include them:

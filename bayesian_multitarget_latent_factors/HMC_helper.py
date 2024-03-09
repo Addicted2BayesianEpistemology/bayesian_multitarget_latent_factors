@@ -188,12 +188,12 @@ def execute_HMC(data_dic,
 
     if len(lista_observed) == 0:
         idata = _az.from_cmdstan([output_dir + '/resHMC/' + file for file in _os.listdir(output_dir + '/resHMC')],
-                                posterior_predictive = [var + '_predictive' for var in lista_predictive],
+                                posterior_predictive = [var + '_predictive' for var in lista_predictive] if not lista_predictive is None else None,
                                 constant_data = json_filepath,
                                 )
     else:
         idata = _az.from_cmdstan([output_dir + '/resHMC/' + file for file in _os.listdir(output_dir + '/resHMC')],
-                                posterior_predictive = [var + '_predictive' for var in lista_predictive],
+                                posterior_predictive = [var + '_predictive' for var in lista_predictive] if not lista_predictive is None else None,
                                 observed_data = json_filepath,
                                 observed_data_var = lista_observed,
                                 constant_data = json_filepath,
@@ -278,12 +278,12 @@ def execute_pathfinder(data_dic,
 
     if len(lista_observed) == 0:
         idata = _az.from_cmdstan([output_dir + '/resPF/' + file for file in _os.listdir(output_dir + '/resPF')],
-                                posterior_predictive = [var + '_predictive' for var in lista_predictive],
+                                posterior_predictive = [var + '_predictive' for var in lista_predictive] if not lista_predictive is None else None,
                                 constant_data = json_filepath,
                                 )
     else:
         idata = _az.from_cmdstan([output_dir + '/resPF/' + file for file in _os.listdir(output_dir + '/resPF')],
-                                posterior_predictive = [var + '_predictive' for var in lista_predictive],
+                                posterior_predictive = [var + '_predictive' for var in lista_predictive] if not lista_predictive is None else None,
                                 observed_data = json_filepath,
                                 observed_data_var = lista_observed,
                                 constant_data = json_filepath,
@@ -318,12 +318,12 @@ def load_HMC(output_dir = './out',
 
     if len(lista_observed) == 0:
         idata = _az.from_cmdstan([output_dir + '/resHMC/' + file for file in _os.listdir(output_dir + '/resHMC')],
-                                posterior_predictive = [var + '_predictive' for var in lista_predictive],
+                                posterior_predictive = [var + '_predictive' for var in lista_predictive] if not lista_predictive is None else None,
                                 constant_data = json_filepath,
                                 )
     else:
         idata = _az.from_cmdstan([output_dir + '/resHMC/' + file for file in _os.listdir(output_dir + '/resHMC')],
-                                posterior_predictive = [var + '_predictive' for var in lista_predictive],
+                                posterior_predictive = [var + '_predictive' for var in lista_predictive] if not lista_predictive is None else None,
                                 observed_data = json_filepath,
                                 observed_data_var = lista_observed,
                                 constant_data = json_filepath,
@@ -453,9 +453,9 @@ def execute_HMC_prior_posterior(data_dic,
 
     
     idata = _az.from_cmdstan([output_dir + '/resHMC_posterior/' + file for file in _os.listdir(output_dir + '/resHMC_posterior')],
-                            posterior_predictive = [var + '_predictive' for var in lista_predictive],
+                            posterior_predictive = [var + '_predictive' for var in lista_predictive] if not lista_predictive is None else None,
                             prior = [output_dir + '/resHMC_prior/' + file for file in _os.listdir(output_dir + '/resHMC_prior')],
-                            prior_predictive = [var + '_predictive' for var in lista_predictive],
+                            prior_predictive = [var + '_predictive' for var in lista_predictive] if not lista_predictive is None else None,
                             observed_data = json_filepath,
                             observed_data_var = lista_observed,
                             constant_data = json_filepath,
@@ -494,9 +494,9 @@ def load_HMC_prior_posterior(stan_name = 'mean_estimation',
     f.close()
     
     idata = _az.from_cmdstan([output_dir + '/resHMC_posterior/' + file for file in _os.listdir(output_dir + '/resHMC_posterior')],
-                            posterior_predictive = [var + '_predictive' for var in lista_predictive],
+                            posterior_predictive = [var + '_predictive' for var in lista_predictive] if not lista_predictive is None else None,
                             prior = [output_dir + '/resHMC_prior/' + file for file in _os.listdir(output_dir + '/resHMC_prior')],
-                            prior_predictive = [var + '_predictive' for var in lista_predictive],
+                            prior_predictive = [var + '_predictive' for var in lista_predictive] if not lista_predictive is None else None,
                             observed_data = json_filepath,
                             observed_data_var = lista_observed,
                             constant_data = json_filepath,
@@ -758,7 +758,7 @@ def MAP_and_LaplaceSample(data_dic,
     optIData =\
     _az.from_cmdstan(
         [output_dir + '/ML_MAP/' + file for file in _os.listdir(output_dir + '/ML_MAP') if file[-4:] == '.csv'],
-        posterior_predictive = [var + '_predictive' for var in lista_predictive],
+        posterior_predictive = [var + '_predictive' for var in lista_predictive] if not lista_predictive is None else None,
         observed_data = json_filepath,
         observed_data_var = lista_observed,
         constant_data = json_filepath,
@@ -769,7 +769,7 @@ def MAP_and_LaplaceSample(data_dic,
     laplaceIData =\
     _az.from_cmdstan(
         [output_dir + '/LaplaceSample/' + file for file in _os.listdir(output_dir + '/LaplaceSample') if file[-4:] == '.csv'],
-        posterior_predictive = [var + '_predictive' for var in lista_predictive],
+        posterior_predictive = [var + '_predictive' for var in lista_predictive] if not lista_predictive is None else None,
         observed_data = json_filepath,
         observed_data_var = lista_observed,
         constant_data = json_filepath,
