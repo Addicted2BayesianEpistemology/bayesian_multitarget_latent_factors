@@ -689,10 +689,8 @@ def Varimax_true_lambdas(True_Λ1, True_Λ2, Varimax_res_xr, idata):
     sign = best_s[perm]
 
     rot_Lambda_copy = Varimax_true_Λ.copy()
-    rot_Lambda_copy[:,0] = sign[0]*Varimax_true_Λ[:,perm[0]]
-    rot_Lambda_copy[:,1] = sign[1]*Varimax_true_Λ[:,perm[1]]
-    rot_Lambda_copy[:,2] = sign[2]*Varimax_true_Λ[:,perm[2]]
-    rot_Lambda_copy[:,3] = sign[3]*Varimax_true_Λ[:,perm[3]]
+    for i in range(len(sign)):
+        rot_Lambda_copy[:,i] = sign[i]*Varimax_true_Λ[:,perm[i]]
 
     rot_Lambda1 = rot_Lambda_copy[:True_Λ1.shape[0],:]
     rot_Lambda2 = rot_Lambda_copy[True_Λ1.shape[0]:,:]
